@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, Pencil, UserPlus, MessageCircle } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   ReferenceCard,
   WorkspaceHeader,
@@ -12,26 +12,9 @@ import {
 } from "@/components/workspace/public";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
+import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
 import { WorkspaceChat } from "@/components/workspace/chat";
-
-interface WorkspaceData {
-  workspace_id: string;
-  workspace_title: string;
-  workspace_description: string;
-  workspace_owner_id: string;
-  workspace_visibility: string;
-}
-
-interface ReferenceData {
-  reference_id: string;
-  reference_title: string;
-  reference_url: string;
-  reference_thumbnail: string;
-  reference_source: string;
-  reference_tags: string[];
-  reference_type: string;
-  reference_category: string;
-}
+import type { ReferenceData, WorkspaceMember } from "@/types";
 
 interface Collection {
   id: string;
@@ -39,103 +22,50 @@ interface Collection {
   count: number;
 }
 
-// Mock data for demonstration
-const mockWorkspace: WorkspaceData = {
-  workspace_id: "mock-1",
-  workspace_title: "UI/UX Inspiration 2024",
-  workspace_description:
-    "A highly curated collection of the best landing pages, mobile app patterns, and interactions. Updated weekly with fresh finds from across the web.",
-  workspace_owner_id: "owner-1",
-  workspace_visibility: "public",
-};
-
-const mockAuthor = {
-  id: "owner-1",
-  name: "Sarah Jenks",
-  avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
-};
-
-const mockReferences: ReferenceData[] = [
-  {
-    reference_id: "ref-1",
-    reference_title: "Vercel Dashboard",
-    reference_url: "https://vercel.com",
-    reference_thumbnail:
-      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500",
-    reference_source: "vercel.com",
-    reference_tags: ["darkmode", "dashboard"],
-    reference_type: "link",
-    reference_category: "Landing Pages",
-  },
-  {
-    reference_id: "ref-2",
-    reference_title: "Linear App Layout",
-    reference_url: "https://linear.app",
-    reference_thumbnail:
-      "https://images.unsplash.com/photo-1558655146-d09347e92766?w=500",
-    reference_source: "linear.app",
-    reference_tags: ["typography"],
-    reference_type: "link",
-    reference_category: "Mobile Interactions",
-  },
-  {
-    reference_id: "ref-3",
-    reference_title: "Nature Background Texture",
-    reference_url: "https://unsplash.com",
-    reference_thumbnail:
-      "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?w=500",
-    reference_source: "Unsplash",
-    reference_tags: ["asset"],
-    reference_type: "image",
-    reference_category: "Landing Pages",
-  },
-  {
-    reference_id: "ref-4",
-    reference_title: "Fintech Primary Colors",
-    reference_url: "https://colorhunt.co",
-    reference_thumbnail: "",
-    reference_source: "Color Hunt",
-    reference_tags: ["colors"],
-    reference_type: "color",
-    reference_category: "Typography",
-  },
-];
-
-const mockCollections: Collection[] = [
-  { id: "1", name: "Landing Pages", count: 45 },
-  { id: "2", name: "Mobile Interactions", count: 32 },
-  { id: "3", name: "Typography", count: 51 },
-];
-
-const mockTags = ["minimal", "darkmode", "fintech", "gradients"];
-
 function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
 
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [author, setAuthor] = useState(mockAuthor);
-  const [references, setReferences] = useState<ReferenceData[]>([]);
-  const [collections, setCollections] = useState<Collection[]>(mockCollections);
-  const [tags, setTags] = useState<string[]>(mockTags);
-  const [loading, setLoading] = useState(true);
+  
+  // Use the useWorkspace hook for data management - only when workspaceId is available
+  const workspaceHookResult = useWorkspace(workspaceId || "skip");
+  
+  // Destructure with safe defaults when workspaceId is null
+  const {
+    workspace = null,
+    owner = null,  
+    references = [],
+    members = [],
+    loading = !workspaceId ? false : true,
+    isOwner = false,
+    getCurrentUserRole,
+    getPermissions,
+    deleteReference,
+    removeMember,
+    inviteMemberByEmail,
+  } = workspaceId ? workspaceHookResult : {};
 
-  // Filter and search state
+  // Local state for UI
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-
-  // Owner-only state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-
-  // Chat state
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isMember, setIsMember] = useState(false);
 
-  // Check if current user is the owner
-  const isOwner = user?.id === workspace?.workspace_owner_id;
+  // Collections and tags derived from references
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
+  // Get current user permissions (only when we have the functions)
+  const permissions = getPermissions ? getPermissions() : {
+    canView: false,
+    canEdit: false,
+    canManageMembers: false,
+    canDeleteWorkspace: false,
+  };
 
   // Unwrap params
   useEffect(() => {
@@ -146,123 +76,45 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     unwrapParams();
   }, [params]);
 
-  // Fetch workspace data
+  // Extract collections and tags from references when they change
   useEffect(() => {
-    if (!workspaceId || authLoading) return;
+    if (!references.length) {
+      setCollections([]);
+      setTags([]);
+      return;
+    }
 
-    const fetchWorkspace = async () => {
-      setLoading(true);
-      try {
-        // Fetch workspace
-        const { data: workspaceData, error: workspaceError } = await supabase
-          .from("workspaces")
-          .select("*")
-          .eq("workspace_id", workspaceId)
-          .single();
+    // Extract unique categories for collections
+    const categoryMap = new Map<string, number>();
+    references.forEach((ref: ReferenceData) => {
+      const category = ref.reference_category || "Uncategorized";
+      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+    });
 
-        if (workspaceError) {
-          // Use mock data if not found
-          setWorkspace(mockWorkspace);
-          setReferences(mockReferences);
-          setLoading(false);
-          return;
-        }
+    const extractedCollections: Collection[] = Array.from(
+      categoryMap.entries()
+    ).map(([name, count], index) => ({
+      id: String(index + 1),
+      name,
+      count,
+    }));
+    setCollections(extractedCollections);
 
-        // Check if workspace is private and user is not the owner
-        const isUserOwner = user?.id === workspaceData.workspace_owner_id;
-        if (workspaceData.workspace_visibility !== "public" && !isUserOwner) {
-          router.push("/explore");
-          return;
-        }
+    // Extract unique tags
+    const tagSet = new Set<string>();
+    references.forEach((ref: ReferenceData) => {
+      (ref.reference_tags || []).forEach((tag: string) => tagSet.add(tag));
+    });
+    setTags(Array.from(tagSet).slice(0, 8));
+  }, [references]);
 
-        setWorkspace(workspaceData);
-
-        // Check if user is a member (owner or collaborator)
-        if (user) {
-          if (user.id === workspaceData.workspace_owner_id) {
-            setIsMember(true);
-          } else {
-            // Check workspace_members table
-            const { data: memberData } = await supabase
-              .from("workspace_members")
-              .select("workspace_id")
-              .eq("workspace_id", workspaceId)
-              .eq("profile_id", user.id)
-              .maybeSingle();
-            
-            setIsMember(!!memberData);
-          }
-        }
-
-        // Fetch owner profile
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("profile_id, display_name, profile_avatar_url")
-          .eq("profile_id", workspaceData.workspace_owner_id)
-          .single();
-
-        if (profileData) {
-          setAuthor({
-            id: profileData.profile_id,
-            name: profileData.display_name || "Unknown User",
-            avatar:
-              profileData.profile_avatar_url ||
-              "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
-          });
-        }
-
-        // Fetch references
-        const { data: referencesData } = await supabase
-          .from("references")
-          .select("*")
-          .eq("workspace_id", workspaceId)
-          .order("reference_created_at", { ascending: false });
-
-        if (referencesData) {
-          setReferences(referencesData);
-
-          // Extract unique categories for collections
-          const categoryMap = new Map<string, number>();
-          referencesData.forEach((ref: any) => {
-            const category = ref.reference_category || "Uncategorized";
-            categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
-          });
-
-          const extractedCollections: Collection[] = Array.from(
-            categoryMap.entries()
-          ).map(([name, count], index) => ({
-            id: String(index + 1),
-            name,
-            count,
-          }));
-          setCollections(extractedCollections);
-
-          // Extract unique tags
-          const tagSet = new Set<string>();
-          referencesData.forEach((ref: any) => {
-            (ref.reference_tags || []).forEach((tag: string) => tagSet.add(tag));
-          });
-          setTags(Array.from(tagSet).slice(0, 8));
-        }
-      } catch (err) {
-        console.error("Error fetching workspace:", err);
-        setWorkspace(mockWorkspace);
-        setReferences(mockReferences);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchWorkspace();
-  }, [workspaceId, router, user, authLoading]);
-
-  // Filter references
-  const filteredReferences = references.filter((ref) => {
+  // Filter references with proper typing
+  const filteredReferences = references.filter((ref: ReferenceData) => {
     // Search filter
     const matchesSearch =
       searchQuery === "" ||
       ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ref.reference_tags?.some((tag) =>
+      ref.reference_tags?.some((tag: string) =>
         tag.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
@@ -279,7 +131,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const handleLike = useCallback(async () => {
     if (!workspace) return;
     showToast("Added to your Favorites 💖");
-    // TODO: Implement actual like logic with Supabase
   }, [workspace, showToast]);
 
   const handleShare = useCallback(() => {
@@ -293,13 +144,11 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       return;
     }
     showToast("Duplicated to your Dashboard ✨");
-    // TODO: Implement actual duplicate logic with Supabase
   }, [user, router, showToast]);
 
   const handleSaveReference = useCallback(
     (refId: string) => {
       showToast("Item Saved to your Library");
-      // TODO: Implement save to library logic
     },
     [showToast]
   );
@@ -311,43 +160,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const handleTagClick = useCallback((tag: string) => {
     setSearchQuery(tag);
   }, []);
-
-  // Owner-only: Handle adding new reference (optimistic update)
-  const handleAddReference = useCallback((newFile: any) => {
-    setReferences((prev) => [newFile, ...prev]);
-    showToast("Reference Added Successfully ✨");
-    setIsAddModalOpen(false);
-  }, [showToast]);
-
-  // Owner-only: Handle deleting a reference
-  const handleDeleteReference = useCallback(async (refId: string, refUrl: string) => {
-    if (!isOwner) return;
-    
-    try {
-      // Extract storage path from the public URL to delete from bucket
-      const STORAGE_BUCKET = "Link-UpWorkpace";
-      const urlParts = refUrl.split(`/storage/v1/object/public/${STORAGE_BUCKET}/`);
-      if (urlParts.length > 1) {
-        const storagePath = decodeURIComponent(urlParts[1]);
-        await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-      }
-
-      // Delete from database
-      const { error } = await supabase
-        .from("references")
-        .delete()
-        .eq("reference_id", refId);
-
-      if (error) throw error;
-
-      // Update local state
-      setReferences((prev) => prev.filter((r) => r.reference_id !== refId));
-      showToast("Reference removed successfully");
-    } catch (err: any) {
-      console.error("Delete error:", err);
-      showToast("Failed to delete reference");
-    }
-  }, [isOwner, showToast]);
 
   const getCategoryEmoji = (category: string) => {
     const emojiMap: Record<string, string> = {
@@ -374,9 +186,9 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto pb-20">
+    <div className="max-w-7xl mx-auto pb-20">
       {/* Owner-only: Add Reference Modal */}
-      {isOwner && (
+      {permissions.canEdit && workspace && (
         <AddReferenceModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
@@ -384,21 +196,39 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
+      {/* Manage Members Modal */}
+      {permissions.canManageMembers && workspace && (
+        <ManageMembersModal
+          isOpen={isMembersModalOpen}
+          onClose={() => setIsMembersModalOpen(false)}
+          members={members}
+          currentUserId={user?.id}
+          ownerId={workspace.workspace_owner_id}
+          canManageMembers={permissions.canManageMembers}
+          onInviteMember={inviteMemberByEmail!}
+          onRemoveMember={removeMember!}
+        />
+      )}
+
       {/* Header */}
       <WorkspaceHeader
-        id={workspace.workspace_id}
-        title={workspace.workspace_title}
-        description={workspace.workspace_description || ""}
+        id={workspace?.workspace_id || ""}
+        title={workspace?.workspace_title || ""}
+        description={workspace?.workspace_description || ""}
         coverImage="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1600"
         category="General"
         categoryEmoji={getCategoryEmoji("General")}
         views={0}
         likes={0}
-        author={author}
+        author={{
+          id: owner?.profile_id || "",
+          name: owner?.display_name || "Unknown User",
+          avatar: owner?.profile_avatar_url || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
+        }}
         onLike={handleLike}
         onShare={handleShare}
         onDuplicate={handleDuplicate}
-        isOwner={isOwner}
+        isOwner={!!isOwner}
       />
 
       {/* Main Content */}
@@ -454,7 +284,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                 : "flex flex-col gap-4"
             }
           >
-            {filteredReferences.map((ref) => (
+            {filteredReferences.map((ref: ReferenceData) => (
               <ReferenceCard
                 key={ref.reference_id}
                 id={ref.reference_id}
@@ -473,8 +303,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                 }
                 onSave={() => handleSaveReference(ref.reference_id)}
                 onOpen={() => handleOpenReference(ref.reference_url)}
-                onDelete={() => handleDeleteReference(ref.reference_id, ref.reference_url)}
-                canDelete={isOwner}
+                onDelete={() => deleteReference?.(ref.reference_id)}
+                canDelete={permissions.canEdit}
               />
             ))}
           </div>
@@ -487,7 +317,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                   ? `No references found for "${searchQuery}"`
                   : "No references in this collection yet."}
               </p>
-              {isOwner && (
+              {permissions.canEdit && (
                 <button
                   onClick={() => setIsAddModalOpen(true)}
                   className="mt-4 px-6 py-3 bg-[#1c1917] text-white rounded-full font-medium hover:bg-stone-800 transition-colors"
@@ -501,27 +331,42 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {/* Owner-only: Floating Add Button */}
-      {isOwner && (
+      {permissions.canEdit && (
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-tr from-lime-400 to-green-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-lime-500/40 hover:scale-110 hover:rotate-90 transition-all duration-500 z-30"
+          className="fixed bottom-8 right-8 w-16 h-16 bg-linear-to-tr from-lime-400 to-green-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-lime-500/40 hover:scale-110 hover:rotate-90 transition-all duration-500 z-30"
         >
           <Plus className="w-8 h-8" />
         </button>
       )}
 
-      {/* Chat Button - Only for members */}
-      {isMember && (
+      {/* Manage Members Button - Only for owners */}
+      {permissions.canManageMembers && (
+        <button
+          onClick={() => setIsMembersModalOpen(true)}
+          className={`fixed bottom-8 ${permissions.canEdit ? 'right-28' : 'right-8'} w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
+          title="Manage Members"
+        >
+          <Users className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Chat Button - Only for workspace members */}
+      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsChatOpen(true)}
-          className={`fixed bottom-8 ${isOwner ? 'right-28' : 'right-8'} w-14 h-14 bg-[#1c1917] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
+          className={`fixed bottom-8 ${
+            permissions.canManageMembers && permissions.canEdit ? 'right-44' : 
+            permissions.canManageMembers || permissions.canEdit ? 'right-28' : 
+            'right-8'
+          } w-14 h-14 bg-[#1c1917] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
         >
           <MessageCircle className="w-6 h-6" />
         </button>
       )}
 
-      {/* Chat Panel - Only for members */}
-      {isMember && workspaceId && (
+      {/* Chat Panel - Only for workspace members */}
+      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && workspaceId && (
         <WorkspaceChat
           workspaceId={workspaceId}
           currentUserId={user?.id}

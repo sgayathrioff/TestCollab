@@ -157,7 +157,6 @@ export default function DashboardPage() {
               type={ws.workspace_visibility || "Private"} 
               // Random image for now since we don't have a cover image column yet
               image={`https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80`}
-              members={1} 
               updated={new Date(ws.workspace_created_at).toLocaleDateString()}
             />
           ))}
@@ -180,7 +179,7 @@ export default function DashboardPage() {
 }
 
 // --- HELPER COMPONENT (UNCHANGED) ---
-function WorkspaceCard({ id, title, type, image, members, updated }: any) {
+function WorkspaceCard({ id, title, type, image, updated }: any) {
   return (
     <Link href={`/workspace/${id}`}>
       <div className="group bg-white p-3 pb-6 rounded-[40px] hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer border border-transparent hover:border-stone-100 h-full">
@@ -197,10 +196,6 @@ function WorkspaceCard({ id, title, type, image, members, updated }: any) {
             <span className="px-3 py-1 bg-stone-100 rounded-full text-xs font-bold uppercase tracking-wider text-stone-500 shrink-0">{type}</span>
           </div>
           <p className="text-stone-400 text-sm mb-4">Created {updated}</p>
-          <div className="flex items-center gap-2 text-sm font-medium text-stone-500">
-            <Users className="w-4 h-4" />
-            <span>{members} Member{members !== 1 && 's'}</span>
-          </div>
         </div>
       </div>
     </Link>

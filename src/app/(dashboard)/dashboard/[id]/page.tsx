@@ -56,7 +56,12 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
           .select("workspace_id")
           .eq("profile_id", user.id);
 
-        if (memberError) throw memberError;
+        if (memberError) {
+          console.error("Error fetching member workspaces:", memberError);
+          // Continue with owned workspaces only
+          setWorkspaces(ownedWorkspaces || []);
+          return;
+        }
 
         let memberWorkspaces: any[] = [];
         if (memberWorkspaceIds && memberWorkspaceIds.length > 0) {
@@ -65,11 +70,14 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
             .from("workspaces")
             .select("*")
             .in("workspace_id", ids)
-            .neq("workspace_owner_id", user.id) // Exclude already fetched owned workspaces
+            .neq("workspace_owner_id", user.id)
             .order("workspace_created_at", { ascending: false });
 
-          if (sharedError) throw sharedError;
-          memberWorkspaces = sharedWorkspaces || [];
+          if (sharedError) {
+            console.error("Error fetching shared workspaces:", sharedError);
+          } else {
+            memberWorkspaces = sharedWorkspaces || [];
+          }
         }
 
         // Combine owned and member workspaces

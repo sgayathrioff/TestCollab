@@ -187,6 +187,31 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
         throw new Error(`Failed to save reference: ${insertError.message}`);
       }
 
+      // Notify all other workspace members + owner about the new reference
+      const [{ data: wsMembers }, { data: wsData }] = await Promise.all([
+        supabase.from('workspace_members').select('profile_id').eq('workspace_id', workspaceId),
+        supabase.from('workspaces').select('workspace_title, workspace_owner_id').eq('workspace_id', workspaceId).single(),
+      ]);
+
+      // Build recipient set: all non-uploader members + owner (if not the uploader)
+      const recipientIds = new Set<string>();
+      (wsMembers || []).forEach(m => {
+        if (m.profile_id !== user.id) recipientIds.add(m.profile_id);
+      });
+      if (wsData?.workspace_owner_id && wsData.workspace_owner_id !== user.id) {
+        recipientIds.add(wsData.workspace_owner_id);
+      }
+
+      if (recipientIds.size > 0 && wsData) {
+        const notifications = Array.from(recipientIds).map(profileId => ({
+          recipient_profile_id: profileId,
+          notification_type: 'reference_added',
+          notification_message: `A new reference "${title}" was added to ${wsData.workspace_title}`,
+          notification_link: `/workspace/${workspaceId}`,
+        }));
+        await supabase.from('notifications').insert(notifications);
+      }
+
       // Notify parent component
       if (onReferenceAdded && refData) {
         onReferenceAdded(refData);
@@ -211,7 +236,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="bg-white w-full max-w-lg rounded-[32px] p-8 relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="bg-white w-full max-w-lg rounded-4xl p-8 relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
         
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-stone-900">Add New Reference</h2>
@@ -264,7 +289,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
                       <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 ${TYPE_COLORS[fileType]}`}>
                         {TYPE_ICONS[fileType]}
                       </div>
-                      <p className="font-bold text-stone-700 truncate max-w-[200px]">{selectedFile.name}</p>
+                      <p className="font-bold text-stone-700 truncate max-w-50">{selectedFile.name}</p>
                       <p className="text-xs text-stone-400 mt-1">{formatFileSize(selectedFile.size)}</p>
                       <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-bold uppercase ${TYPE_COLORS[fileType]}`}>
                         {fileType}

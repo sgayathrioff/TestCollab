@@ -40,8 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.create_notification.sql
-.fix_notification.sql
-.fix_rls.sql
-.fix_visibility.sql
-.Member_Management.sql
+*.sql

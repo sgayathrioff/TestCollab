@@ -75,11 +75,11 @@ export interface Message {
 export interface Notification {
   notification_id: string;
   recipient_profile_id: string;
-  notification_type: 'workspace_invite' | 'workspace_removal';
+  notification_type: 'workspace_invite' | 'workspace_removal' | 'reference_added' | 'member_joined' | 'workspace_updated';
   notification_message: string;
-  notification_link: string;
+  notification_link?: string;
   notification_is_read: boolean;
   notification_created_at: string;
-  // sender and workspace details are not directly linkable in the current schema
-  // so we might just use the message or link
+  sender_name?: string;
+  workspace_title?: string;
 }

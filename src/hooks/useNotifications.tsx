@@ -116,7 +116,26 @@ export function useNotifications() {
     } catch (err) {
       console.error('Error deleting notification:', err);
     }
-  }
+  };
 
-  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification };
+  const deleteAllRead = async () => {
+    try {
+      const readIds = notifications.filter(n => n.notification_is_read).map(n => n.notification_id);
+      if (readIds.length === 0) return;
+
+      // Optimistic update
+      setNotifications(prev => prev.filter(n => !n.notification_is_read));
+
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .in('notification_id', readIds);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error deleting read notifications:', err);
+    }
+  };
+
+  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead };
 }

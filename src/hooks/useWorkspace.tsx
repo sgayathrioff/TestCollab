@@ -242,13 +242,26 @@ export function useWorkspace(workspaceId: string) {
 
       // Update local state
       setReferences(prev => [data, ...prev]);
+
+      // Notify all other workspace members about the new reference
+      const otherMembers = members.filter(m => m.profile_id !== user.id);
+      if (otherMembers.length > 0 && workspace) {
+        const notifications = otherMembers.map(m => ({
+          recipient_profile_id: m.profile_id,
+          notification_type: 'reference_added' as const,
+          notification_message: `A new reference "${referenceData.reference_title}" was added to ${workspace.workspace_title}`,
+          notification_link: `/workspace/${workspaceId}`,
+        }));
+        await supabase.from('notifications').insert(notifications);
+      }
+
       return data;
 
     } catch (err: any) {
       console.error('Error adding reference:', err);
       throw err;
     }
-  }, [user, workspaceId, getPermissions]);
+  }, [user, workspaceId, workspace, members, getPermissions]);
 
   // Delete reference
   const deleteReference = useCallback(async (referenceId: string) => {
@@ -328,13 +341,27 @@ export function useWorkspace(workspaceId: string) {
       if (error) throw error;
 
       setWorkspace(data);
+
+      // Notify all members (excluding the owner who made the change) about the update
+      const otherMembers = members.filter(m => m.profile_id !== user.id);
+      if (otherMembers.length > 0) {
+        const notifTitle = data?.workspace_title ?? workspace.workspace_title;
+        const notifs = otherMembers.map(m => ({
+          recipient_profile_id: m.profile_id,
+          notification_type: 'workspace_updated' as const,
+          notification_message: `"${notifTitle}" workspace details have been updated`,
+          notification_link: `/workspace/${workspaceId}`,
+        }));
+        await supabase.from('notifications').insert(notifs);
+      }
+
       return data;
 
     } catch (err: any) {
       console.error('Error updating workspace:', err);
       throw err;
     }
-  }, [user, workspace, workspaceId]);
+  }, [user, workspace, workspaceId, members]);
 
   // Member management functions
   // Add a member (always as 'member' role - simplified)
@@ -369,12 +396,27 @@ export function useWorkspace(workspaceId: string) {
 
       if (error) throw error;
 
-      // Add notification
+      // Notify the new member
       await supabase.from('notifications').insert({
         recipient_profile_id: profileId,
         notification_type: 'workspace_invite',
         notification_message: `You have been added to ${workspace.workspace_title} as a member`,
+        notification_link: `/workspace/${workspaceId}`,
       });
+
+      // Notify existing members that someone new joined
+      const existingOtherMembers = members.filter(
+        m => m.profile_id !== profileId && m.profile_id !== user.id
+      );
+      if (existingOtherMembers.length > 0) {
+        const joinNotifs = existingOtherMembers.map(m => ({
+          recipient_profile_id: m.profile_id,
+          notification_type: 'member_joined' as const,
+          notification_message: `A new member joined ${workspace.workspace_title}`,
+          notification_link: `/workspace/${workspaceId}`,
+        }));
+        await supabase.from('notifications').insert(joinNotifs);
+      }
 
       // Refetch to update members list
       await fetchWorkspace();
@@ -413,6 +455,7 @@ export function useWorkspace(workspaceId: string) {
           recipient_profile_id: profileId,
           notification_type: 'workspace_removal',
           notification_message: `You have been removed from ${workspace.workspace_title}`,
+          notification_link: `/explore`,
         });
       }
 

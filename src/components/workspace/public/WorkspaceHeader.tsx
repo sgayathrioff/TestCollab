@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, Heart, Share2, Copy, Pencil, UserPlus, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, Heart, Share2, Copy, Pencil, UserPlus, Trash2, Tag } from "lucide-react";
 
 interface WorkspaceHeaderProps {
   id: string;
@@ -28,6 +28,7 @@ interface WorkspaceHeaderProps {
   onEdit?: () => void;
   onInvite?: () => void;
   onDelete?: () => void;
+  onManageTags?: () => void;
 }
 
 export function WorkspaceHeader({
@@ -50,6 +51,7 @@ export function WorkspaceHeader({
   onEdit,
   onInvite,
   onDelete,
+  onManageTags,
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [liked, setLiked] = useState(isLiked);
@@ -159,6 +161,17 @@ export function WorkspaceHeader({
                   >
                     <Pencil className="w-5 h-5" />
                   </button>
+
+                  {/* Owner: Manage Tags Button */}
+                  {onManageTags && (
+                    <button
+                      onClick={onManageTags}
+                      className="w-full sm:w-14 h-14 rounded-full border-2 border-lime-200 flex items-center justify-center text-lime-600 hover:bg-lime-50 transition-colors"
+                      title="Manage tags"
+                    >
+                      <Tag className="w-5 h-5" />
+                    </button>
+                  )}
 
                   {/* Owner: Share Button */}
                   <button

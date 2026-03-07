@@ -277,31 +277,43 @@ export function WorkspaceChat({
           table: "messages",
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        async (payload) => {
+        (payload) => {
           const newMessage = payload.new as Message;
 
           // Don't add if it's from current user (already added optimistically)
-          if (newMessage.sender_profile_id === currentUserId) return;
+          if (currentUserId && newMessage.sender_profile_id === currentUserId) {
+            return;
+          }
 
-          // Fetch sender profile
-          const { data: profile } = await supabase
+          // Add message immediately without sender details
+          setMessages((prev) => [...prev, newMessage]);
+
+          // Fetch sender profile asynchronously and update the message
+          supabase
             .from("profiles")
             .select("display_name, profile_avatar_url")
             .eq("profile_id", newMessage.sender_profile_id)
-            .single();
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              ...newMessage,
-              sender: profile
-                ? {
-                    display_name: profile.display_name || "Unknown",
-                    profile_avatar_url: profile.profile_avatar_url || "",
-                  }
-                : undefined,
-            },
-          ]);
+            .single()
+            .then(({ data: profile }) => {
+              if (profile) {
+                setMessages((prev) => 
+                  prev.map((msg) =>
+                    msg.message_id === newMessage.message_id
+                      ? {
+                          ...msg,
+                          sender: {
+                            display_name: profile.display_name || "Unknown",
+                            profile_avatar_url: profile.profile_avatar_url || "",
+                          },
+                        }
+                      : msg
+                  )
+                );
+              }
+            })
+            .catch((err) => {
+              console.error("Error fetching sender profile:", err);
+            });
         }
       )
       .subscribe();
@@ -309,7 +321,8 @@ export function WorkspaceChat({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isOpen, workspaceId, currentUserId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, workspaceId]);
 
   if (!isOpen) return null;
 

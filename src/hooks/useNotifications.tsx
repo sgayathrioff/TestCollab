@@ -45,8 +45,8 @@ export function useNotifications() {
     fetchNotifications();
 
     // Subscribe to realtime changes
-    const subscription = supabase
-      .channel('notifications_channel')
+    const channel = supabase
+      .channel(`user-notifications-${user.id}`)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -54,14 +54,36 @@ export function useNotifications() {
           table: 'notifications', 
           filter: `recipient_profile_id=eq.${user.id}` 
         }, 
-        () => {
-          fetchNotifications();
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newNotif = payload.new as Notification;
+            setNotifications(prev => [newNotif, ...prev]);
+            if (!newNotif.notification_is_read) {
+              setUnreadCount(prev => prev + 1);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedNotif = payload.new as Notification;
+            setNotifications(prev => {
+              const updated = prev.map(n => 
+                n.notification_id === updatedNotif.notification_id ? updatedNotif : n
+              );
+              // Recalculate unread count
+              setUnreadCount(updated.filter(n => !n.notification_is_read).length);
+              return updated;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            setNotifications(prev => {
+              const filtered = prev.filter(n => n.notification_id !== payload.old.notification_id);
+              setUnreadCount(filtered.filter(n => !n.notification_is_read).length);
+              return filtered;
+            });
+          }
         }
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, [user]);
 

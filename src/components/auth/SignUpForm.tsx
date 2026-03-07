@@ -15,6 +15,7 @@ export function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
   // Password Strength Logic
   const getStrength = (pass: string) => {
@@ -79,8 +80,8 @@ export function SignUpForm() {
 
       if (error) throw error;
 
-      // 2. Redirect to dashboard on success
-      router.push("/dashboard");
+      // 2. Show success message - user needs to confirm email
+      setSuccess(true);
 
     } catch (err: any) {
       setError(err.message || "Failed to create account");
@@ -95,7 +96,27 @@ export function SignUpForm() {
       <p className="text-center text-stone-500 mb-6">Start organizing your creative flow.</p>
 
       {error && <div className="text-red-500 text-center mb-4 text-sm">{error}</div>}
+      
+      {success && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-green-900 mb-1">Account created! 🎉</p>
+              <p className="text-xs text-green-700">Check your email to confirm your account. After confirming, you can log in.</p>
+            </div>
+          </div>
+          <Link
+            href="/login"
+            className="mt-3 block w-full py-2 text-center bg-green-600 text-white rounded-xl font-medium text-sm hover:bg-green-700 transition-colors"
+          >
+            Go to Login
+          </Link>
+        </div>
+      )}
 
+      {!success && (
+        <>
       <form onSubmit={handleSignUp} className="space-y-4">
         
         {/* Full Name */}
@@ -207,6 +228,8 @@ export function SignUpForm() {
           Login
         </Link>
       </p>
+      </>
+      )}
     </div>
   );
 }

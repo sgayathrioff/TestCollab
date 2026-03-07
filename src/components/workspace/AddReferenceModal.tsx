@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, Image } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, Image, Tag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getFileTypeFromUrl, getFileTypeFromMime, ReferenceType } from "@/lib/fileType";
 
@@ -13,6 +13,12 @@ interface AddReferenceModalProps {
   onClose: () => void;
   workspaceId: string;
   onReferenceAdded?: (reference: any) => void;
+}
+
+interface WorkspaceTag {
+  tag_id: string;
+  tag_name: string;
+  tag_color: string;
 }
 
 const TYPE_ICONS: Record<ReferenceType, React.ReactNode> = {
@@ -39,9 +45,64 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Tags state
+  const [availableTags, setAvailableTags] = useState<WorkspaceTag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch workspace tags when modal opens
+  useEffect(() => {
+    if (isOpen && workspaceId) {
+      fetchWorkspaceTags();
+    }
+  }, [isOpen, workspaceId]);
+
+  const fetchWorkspaceTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tags")
+        .select("tag_id, tag_name, tag_color")
+        .eq("workspace_id", workspaceId)
+        .order("tag_name");
+
+      if (error) throw error;
+      setAvailableTags(data || []);
+    } catch (err) {
+      console.error("Error fetching tags:", err);
+    }
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tagId)
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId]
+    );
+  };
+
   if (!isOpen) return null;
+
+  // Sanitize filename for storage - remove special characters
+  const sanitizeFilename = (filename: string): string => {
+    // Get file extension
+    const lastDot = filename.lastIndexOf('.');
+    const name = lastDot > 0 ? filename.substring(0, lastDot) : filename;
+    const ext = lastDot > 0 ? filename.substring(lastDot) : '';
+    
+    // Remove emojis, special chars, keep only alphanumeric, dash, underscore
+    const sanitized = name
+      .replace(/[^\w\s-]/g, '') // Remove special chars except word chars, spaces, dash
+      .replace(/\s+/g, '_')      // Replace spaces with underscore
+      .replace(/_+/g, '_')       // Remove duplicate underscores
+      .replace(/^_+|_+$/g, '')   // Remove leading/trailing underscores
+      .substring(0, 100);        // Limit length
+    
+    // If nothing remains after sanitization, use a default name
+    const finalName = sanitized || `file_${Date.now()}`;
+    
+    return finalName + ext;
+  };
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 Bytes";
@@ -113,8 +174,11 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
       if (activeTab === 'upload' && selectedFile) {
         finalType = fileType;
         
+        // Sanitize filename to remove special characters
+        const sanitizedFilename = sanitizeFilename(selectedFile.name);
+        
         // Build storage path: workspaceId/type/timestamp_filename
-        const storagePath = `${workspaceId}/${finalType}/${Date.now()}_${selectedFile.name}`;
+        const storagePath = `${workspaceId}/${finalType}/${Date.now()}_${sanitizedFilename}`;
         
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
@@ -135,7 +199,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
         finalUrl = urlData.publicUrl;
         metadata = {
           size: formatFileSize(selectedFile.size),
-          original_name: selectedFile.name,
+          original_name: selectedFile.name, // Store original filename with special chars
         };
       }
       // Handle URL import
@@ -170,6 +234,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
       }
 
       // Insert reference into database
+      console.log('Inserting reference:', { title, finalType, finalUrl });
       const { data: refData, error: insertError } = await supabase
         .from("references")
         .insert({
@@ -185,6 +250,22 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
 
       if (insertError) {
         throw new Error(`Failed to save reference: ${insertError.message}`);
+      }
+
+      // Insert selected tags into reference_tags junction table
+      if (selectedTags.length > 0 && refData) {
+        const tagInserts = selectedTags.map(tagId => ({
+          reference_id: refData.reference_id,
+          tag_id: tagId,
+        }));
+
+        const { error: tagError } = await supabase
+          .from("reference_tags")
+          .insert(tagInserts);
+
+        if (tagError) {
+          console.error("Error adding tags to reference:", tagError);
+        }
       }
 
       // Notify all other workspace members + owner about the new reference
@@ -223,11 +304,13 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
       setPreviewUrl("");
       setSelectedFile(null);
       setFileType("image");
+      setSelectedTags([]);
       onClose();
 
     } catch (err: any) {
       console.error("Error adding reference:", err);
-      setError(err.message || "Failed to add reference");
+      const errorMessage = err.message || err.error || err.toString() || "Failed to add reference";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -358,6 +441,41 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
                className="w-full px-4 py-3 rounded-xl bg-white border border-stone-200 focus:outline-none focus:ring-2 focus:ring-lime-500/50 transition-all font-bold text-stone-900" 
              />
           </div>
+
+          {/* Tags Selector */}
+          {availableTags.length > 0 ? (
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 flex items-center gap-2">
+                <Tag className="w-3 h-3" />
+                Tags (Optional)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag.tag_id}
+                    type="button"
+                    onClick={() => toggleTag(tag.tag_id)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                      selectedTags.includes(tag.tag_id)
+                        ? "ring-2 ring-offset-1 ring-stone-900 scale-105"
+                        : "opacity-60 hover:opacity-100"
+                    }`}
+                    style={{ 
+                      backgroundColor: tag.tag_color,
+                      color: '#fff'
+                    }}
+                  >
+                    {tag.tag_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-500 flex items-center gap-2">
+              <Tag className="w-3 h-3" />
+              <span>No tags yet. Click the tag icon in the workspace header to create tags.</span>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button disabled={loading} onClick={onClose} className="flex-1 py-3.5 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50 transition-colors">Cancel</button>

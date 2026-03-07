@@ -38,7 +38,13 @@ export function LoginForm() {
 
     } catch (err: any) {
       console.error(err);
-      setError("Invalid email or password.");
+      if (err.message?.includes("Email not confirmed")) {
+        setError("Please check your email and confirm your account before logging in.");
+      } else if (err.message?.includes("Invalid")) {
+        setError("Invalid email or password.");
+      } else {
+        setError(err.message || "Failed to log in.");
+      }
     } finally {
       setLoading(false);
     }

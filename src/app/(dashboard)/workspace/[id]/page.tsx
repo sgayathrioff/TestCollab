@@ -14,6 +14,7 @@ import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
 import { EditReferenceModal } from "@/components/workspace/EditReferenceModal";
 import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
+import { TagManager } from "@/components/workspace/TagManager";
 import { WorkspaceChat } from "@/components/workspace/chat";
 import type { ReferenceData, WorkspaceMember } from "@/types";
 
@@ -62,6 +63,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 
   // Collections and tags derived from references
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -202,8 +204,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
             setIsEditModalOpen(false);
             setEditingReference(null);
           }}
+          workspaceId={workspace.workspace_id}
           reference={editingReference}
           onUpdate={updateReference}
+          onUpdated={() => {
+            if (refetch) refetch();
+          }}
         />
       )}
 
@@ -218,6 +224,18 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           canManageMembers={permissions.canManageMembers}
           onInviteMember={inviteMemberByEmail!}
           onRemoveMember={removeMember!}
+        />
+      )}
+
+      {/* Tag Manager Modal */}
+      {workspace && (
+        <TagManager
+          isOpen={isTagManagerOpen}
+          onClose={() => setIsTagManagerOpen(false)}
+          workspaceId={workspace.workspace_id}
+          onTagsUpdated={() => {
+            if (refetch) refetch();
+          }}
         />
       )}
 
@@ -288,6 +306,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         onDuplicate={handleDuplicate}
         isOwner={!!isOwner}
         onDelete={permissions.canDeleteWorkspace ? () => setIsDeleteConfirmOpen(true) : undefined}
+        onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
       />
 
       {/* Main Content */}

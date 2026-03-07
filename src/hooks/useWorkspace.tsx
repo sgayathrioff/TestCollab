@@ -99,50 +99,37 @@ export function useWorkspace(workspaceId: string) {
   // Fetch workspace data
   const fetchWorkspace = useCallback(async () => {
     if (!isValidWorkspaceId) {
-      console.log('No valid workspaceId provided to fetchWorkspace:', workspaceId);
       setLoading(false);
       return;
     }
 
-    console.log('Fetching workspace:', workspaceId);
     setLoading(true);
     setError(null);
 
     try {
       // 1. Fetch workspace details
-      console.log('Fetching workspace details...');
       const { data: workspaceData, error: workspaceError } = await supabase
         .from('workspaces')
         .select('*')
         .eq('workspace_id', workspaceId)
         .single();
 
-      if (workspaceError) {
-        console.error('Workspace query error:', workspaceError);
-        throw workspaceError;
-      }
+      if (workspaceError) throw workspaceError;
       if (!workspaceData) throw new Error('Workspace not found');
 
-      console.log('Workspace data:', workspaceData);
       setWorkspace(workspaceData);
 
       // 2. Fetch workspace owner profile
-      console.log('Fetching owner profile...');
       const { data: ownerData, error: ownerError } = await supabase
         .from('profiles')
         .select('profile_id, display_name, profile_avatar_url')
         .eq('profile_id', workspaceData.workspace_owner_id)
         .single();
 
-      if (ownerError) {
-        console.error('Owner query error:', ownerError);
-        throw ownerError;
-      }
-      console.log('Owner data:', ownerData);
+      if (ownerError) throw ownerError;
       setOwner(ownerData);
 
       // 3. Fetch references for this workspace with tags
-      console.log('Fetching references...');
       const { data: referencesData, error: referencesError } = await supabase
         .from('references')
         .select(`
@@ -159,8 +146,6 @@ export function useWorkspace(workspaceId: string) {
         .order('reference_created_at', { ascending: false });
 
       if (referencesError) {
-        console.error('References query error:', referencesError);
-        console.error('Error details:', referencesError.message, referencesError.hint);
         // Fall back to simple query without tags if join fails
         const { data: simpleData, error: simpleError } = await supabase
           .from('references')
@@ -179,11 +164,9 @@ export function useWorkspace(workspaceId: string) {
         tags: ref.reference_tags?.map((rt: any) => rt.tags).filter(Boolean) || []
       }));
       
-      console.log('References data:', transformedReferences?.length || 0, 'references');
       setReferences(transformedReferences);
 
       // 4. Fetch workspace members
-      console.log('Fetching workspace members...');
       const { data: membersData, error: membersError } = await supabase
         .from('workspace_members')
         .select('*')
@@ -238,7 +221,6 @@ export function useWorkspace(workspaceId: string) {
       // Combine owner with other members (avoiding duplicates)
       const allMembers = [ownerMember, ...membersWithProfiles.filter(m => m.profile_id !== workspaceData.workspace_owner_id)];
       setMembers(allMembers);
-      console.log('Members loaded:', allMembers.length);
 
     } catch (err: any) {
       console.error('Error fetching workspace:', err);
@@ -344,9 +326,17 @@ export function useWorkspace(workspaceId: string) {
 
       if (error) throw error;
 
-      // Update local state
+      // Update local state - preserve existing tags since they're managed separately
       setReferences(prev => 
-        prev.map(ref => ref.reference_id === referenceId ? data : ref)
+        prev.map(ref => {
+          if (ref.reference_id === referenceId) {
+            return {
+              ...data,
+              tags: ref.tags || [] // Preserve existing tags
+            };
+          }
+          return ref;
+        })
       );
 
       return data;
@@ -585,15 +575,16 @@ export function useWorkspace(workspaceId: string) {
   // Check if current user is owner
   const isOwner = workspace && user && workspace.workspace_owner_id === user.id;
 
-  // Set up real-time subscriptions
+  // Initial data fetch and real-time subscriptions
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!isValidWorkspaceId) return;
 
-    console.log('Setting up real-time subscriptions for:', workspaceId);
+    // Initial fetch
+    fetchWorkspace();
 
-    // Subscribe to references changes
-    const referencesSubscription = supabase
-      .channel(`references:workspace_id=eq.${workspaceId}`)
+    // Set up realtime subscriptions
+    const referencesChannel = supabase
+      .channel(`workspace-references-${workspaceId}`)
       .on('postgres_changes', 
         { 
           event: '*', 
@@ -602,24 +593,29 @@ export function useWorkspace(workspaceId: string) {
           filter: `workspace_id=eq.${workspaceId}`
         }, 
         (payload) => {
-          console.log('References change received:', payload);
-          
           if (payload.eventType === 'INSERT') {
             setReferences(prev => [payload.new as ReferenceData, ...prev]);
           } else if (payload.eventType === 'DELETE') {
             setReferences(prev => prev.filter(ref => ref.reference_id !== payload.old.reference_id));
           } else if (payload.eventType === 'UPDATE') {
             setReferences(prev => 
-              prev.map(ref => ref.reference_id === payload.new.reference_id ? payload.new as ReferenceData : ref)
+              prev.map(ref => {
+                if (ref.reference_id === payload.new.reference_id) {
+                  return {
+                    ...(payload.new as ReferenceData),
+                    tags: ref.tags || [] // Preserve existing tags
+                  };
+                }
+                return ref;
+              })
             );
           }
         }
       )
       .subscribe();
 
-    // Subscribe to workspace changes
-    const workspaceSubscription = supabase
-      .channel(`workspace:workspace_id=eq.${workspaceId}`)
+    const workspaceChannel = supabase
+      .channel(`workspace-details-${workspaceId}`)
       .on('postgres_changes',
         {
           event: 'UPDATE',
@@ -628,15 +624,13 @@ export function useWorkspace(workspaceId: string) {
           filter: `workspace_id=eq.${workspaceId}`
         },
         (payload) => {
-          console.log('Workspace change received:', payload);
           setWorkspace(payload.new as WorkspaceData);
         }
       )
       .subscribe();
 
-    // Subscribe to workspace members changes
-    const membersSubscription = supabase
-      .channel(`workspace_members:workspace_id=eq.${workspaceId}`)
+    const membersChannel = supabase
+      .channel(`workspace-members-${workspaceId}`)
       .on('postgres_changes',
         {
           event: '*',
@@ -645,23 +639,23 @@ export function useWorkspace(workspaceId: string) {
           filter: `workspace_id=eq.${workspaceId}`
         },
         (payload) => {
-          console.log('Members change received:', payload);
-          fetchWorkspace();
+          // Re-fetch workspace data when members change
+          // Using a small delay to batch updates
+          setTimeout(() => {
+            fetchWorkspace();
+          }, 500);
         }
       )
       .subscribe();
 
     return () => {
-      referencesSubscription.unsubscribe();
-      workspaceSubscription.unsubscribe();
-      membersSubscription.unsubscribe();
+      // Properly remove all channels
+      supabase.removeChannel(referencesChannel);
+      supabase.removeChannel(workspaceChannel);
+      supabase.removeChannel(membersChannel);
     };
-  }, [workspaceId, isValidWorkspaceId, fetchWorkspace]);
-
-  // Initial data fetch
-  useEffect(() => {
-    fetchWorkspace();
-  }, [fetchWorkspace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, isValidWorkspaceId]);
 
   return {
     // Data

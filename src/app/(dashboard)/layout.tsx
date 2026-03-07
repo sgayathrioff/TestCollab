@@ -64,12 +64,9 @@ export default function DashboardLayout({
   const handleProfileClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    console.log("Profile clicked, user:", user);
-    console.log("User ID:", user?.id);
     setIsDropdownOpen(false);
     if (user?.id) {
       const profileUrl = `/dashboard/${user.id}`;
-      console.log("Navigating to:", profileUrl);
       router.push(profileUrl);
     } else {
       console.error("User ID not available");

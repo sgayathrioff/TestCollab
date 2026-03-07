@@ -21,7 +21,6 @@ export function useAuth() {
       try {
         // A. Get the Basic Auth User
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log("Supabase session:", session); // Debug session
         if (sessionError) {
           console.error("Error fetching session:", sessionError);
           setLoading(false);
@@ -29,7 +28,6 @@ export function useAuth() {
         }
 
         if (!session?.user) {
-          console.log("No active session found.");
           setLoading(false);
           return;
         }
@@ -43,8 +41,6 @@ export function useAuth() {
 
         if (profileError) {
           console.error("Error fetching profile:", profileError);
-        } else {
-          console.log("Fetched profile:", profile); // Debug profile data
         }
 
         // C. Merge them into one object
@@ -66,8 +62,6 @@ export function useAuth() {
 
     // D. Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log("Auth state changed:", _event, session); // Debug auth state changes
-
       if (session?.user) {
         // Re-fetch profile on login to be safe
         const { data: profile, error: profileError } = await supabase
@@ -78,8 +72,6 @@ export function useAuth() {
 
         if (profileError) {
           console.error("Error fetching profile on auth change:", profileError);
-        } else {
-          console.log("Fetched profile on auth change:", profile); // Debug profile data
         }
 
         setUser({
@@ -88,7 +80,6 @@ export function useAuth() {
           avatar_url: profile?.profile_avatar_url,
         });
       } else {
-        console.log("User signed out or no session available.");
         setUser(null);
         // Only redirect automatically on session timeout, not on manual signOut
         // (signOut function handles its own redirect)

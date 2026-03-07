@@ -11,9 +11,6 @@ export function Sidebar() {
     return <div>Loading...</div>; // Show a loading indicator while user data is being fetched
   }
 
-  console.log("User in Sidebar:", user); // Debug user object
-  console.log("User ID in Sidebar:", user?.id); // Debug user ID
-
   return (
     <aside className="w-64 border-r bg-gray-50 h-screen p-4">
       <nav className="space-y-2">

@@ -55,13 +55,17 @@ export interface ReferenceData {
   reference_id: string;
   reference_title: string;
   reference_url: string;
-  reference_thumbnail: string;
-  reference_source: string;
-  reference_tags: string[];
   reference_type: string;
-  reference_category: string;
+  reference_metadata: {
+    thumbnail?: string;
+    source?: string;
+    colorPalette?: string[];
+  };
   workspace_id: string;
+  uploaded_by_profile_id: string;
   reference_created_at: string;
+  // Tags loaded separately via join
+  tags?: Array<{ tag_id: string; tag_name: string; tag_color: string }>;
 }
 
 export interface Message {

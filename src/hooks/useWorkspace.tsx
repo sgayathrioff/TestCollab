@@ -18,13 +18,16 @@ interface ReferenceData {
   reference_id: string;
   reference_title: string;
   reference_url: string;
-  reference_thumbnail: string;
-  reference_source: string;
-  reference_tags: string[];
   reference_type: string;
-  reference_category: string;
+  reference_metadata: {
+    thumbnail?: string;
+    source?: string;
+    colorPalette?: string[];
+  };
   workspace_id: string;
+  uploaded_by_profile_id: string;
   reference_created_at: string;
+  tags?: Array<{ tag_id: string; tag_name: string; tag_color: string }>;
 }
 
 interface WorkspaceOwner {
@@ -138,20 +141,46 @@ export function useWorkspace(workspaceId: string) {
       console.log('Owner data:', ownerData);
       setOwner(ownerData);
 
-      // 3. Fetch references for this workspace
+      // 3. Fetch references for this workspace with tags
       console.log('Fetching references...');
       const { data: referencesData, error: referencesError } = await supabase
         .from('references')
-        .select('*')
+        .select(`
+          *,
+          reference_tags!left(
+            tags!left(
+              tag_id,
+              tag_name,
+              tag_color
+            )
+          )
+        `)
         .eq('workspace_id', workspaceId)
         .order('reference_created_at', { ascending: false });
 
       if (referencesError) {
         console.error('References query error:', referencesError);
-        throw referencesError;
+        console.error('Error details:', referencesError.message, referencesError.hint);
+        // Fall back to simple query without tags if join fails
+        const { data: simpleData, error: simpleError } = await supabase
+          .from('references')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('reference_created_at', { ascending: false });
+        
+        if (simpleError) throw simpleError;
+        setReferences(simpleData || []);
+        return; // Exit early with simple data
       }
-      console.log('References data:', referencesData?.length || 0, 'references');
-      setReferences(referencesData || []);
+      
+      // Transform the nested structure to match our interface
+      const transformedReferences = (referencesData || []).map((ref: any) => ({
+        ...ref,
+        tags: ref.reference_tags?.map((rt: any) => rt.tags).filter(Boolean) || []
+      }));
+      
+      console.log('References data:', transformedReferences?.length || 0, 'references');
+      setReferences(transformedReferences);
 
       // 4. Fetch workspace members
       console.log('Fetching workspace members...');
@@ -299,9 +328,16 @@ export function useWorkspace(workspaceId: string) {
     }
 
     try {
+      // Only update fields that exist in the database
+      const validUpdates: any = {};
+      if (updates.reference_title !== undefined) validUpdates.reference_title = updates.reference_title;
+      if (updates.reference_type !== undefined) validUpdates.reference_type = updates.reference_type;
+      if (updates.reference_url !== undefined) validUpdates.reference_url = updates.reference_url;
+      if (updates.reference_metadata !== undefined) validUpdates.reference_metadata = updates.reference_metadata;
+
       const { data, error } = await supabase
         .from('references')
-        .update(updates)
+        .update(validUpdates)
         .eq('reference_id', referenceId)
         .select()
         .single();
@@ -316,8 +352,8 @@ export function useWorkspace(workspaceId: string) {
       return data;
 
     } catch (err: any) {
-      console.error('Error updating reference:', err);
-      throw err;
+      const errorMessage = err?.message || err?.hint || 'Failed to update reference';
+      throw new Error(errorMessage);
     }
   }, [user, getPermissions]);
 
@@ -496,6 +532,56 @@ export function useWorkspace(workspaceId: string) {
     }
   }, [user, workspace, getPermissions, addMember]);
 
+  // Delete entire workspace (owner only)
+  const deleteWorkspace = useCallback(async (): Promise<void> => {
+    if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
+
+    const permissions = getPermissions();
+    if (!permissions.canDeleteWorkspace) {
+      throw new Error('Only the workspace owner can delete this workspace');
+    }
+
+    try {
+      // Delete all references files from storage (best effort)
+      const storagePaths = references
+        .map(r => {
+          try {
+            const url = new URL(r.reference_url);
+            const parts = url.pathname.split('/object/public/');
+            return parts[1] ? decodeURIComponent(parts[1]) : null;
+          } catch { return null; }
+        })
+        .filter(Boolean) as string[];
+
+      if (storagePaths.length > 0) {
+        await supabase.storage.from('Link-UpWorkpace').remove(storagePaths);
+      }
+
+      // Notify all members before deleting
+      const otherMembers = members.filter(m => m.profile_id !== user.id);
+      if (otherMembers.length > 0) {
+        const notifs = otherMembers.map(m => ({
+          recipient_profile_id: m.profile_id,
+          notification_type: 'workspace_removal' as const,
+          notification_message: `The workspace "${workspace.workspace_title}" has been deleted by the owner`,
+          notification_link: `/explore`,
+        }));
+        await supabase.from('notifications').insert(notifs);
+      }
+
+      // Delete workspace (cascade deletes members, references, messages in DB)
+      const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('workspace_id', workspaceId);
+
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('Error deleting workspace:', err);
+      throw err;
+    }
+  }, [user, workspace, workspaceId, members, references, getPermissions]);
+
   // Check if current user is owner
   const isOwner = workspace && user && workspace.workspace_owner_id === user.id;
 
@@ -604,5 +690,6 @@ export function useWorkspace(workspaceId: string) {
     addMember,
     removeMember,
     inviteMemberByEmail,
+    deleteWorkspace,
   };
 }

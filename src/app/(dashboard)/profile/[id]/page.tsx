@@ -24,6 +24,7 @@ interface ProfileData {
   website_url: string;
   twitter_url: string;
   is_verified: boolean;
+  skills: string[];
 }
 
 interface ProfileStats {
@@ -53,6 +54,7 @@ const mockProfile: ProfileData = {
   website_url: "https://example.com",
   twitter_url: "https://twitter.com",
   is_verified: true,
+  skills: ["UI/UX Design", "Figma", "Branding"],
 };
 
 const mockStats: ProfileStats = {
@@ -153,6 +155,7 @@ export default function ProfilePage({
             website_url: profileData.profile_website_url || "",
             twitter_url: profileData.profile_twitter_url || "",
             is_verified: profileData.profile_is_verified || false,
+            skills: profileData.profile_skills || [],
           });
 
           // Fetch public workspaces for this user
@@ -333,9 +336,26 @@ export default function ProfilePage({
           <div className="flex flex-col lg:flex-row justify-between gap-8">
             {/* Bio */}
             <div className="max-w-2xl">
-              <p className="text-stone-600 leading-relaxed text-lg">
+              <p className="text-stone-600 leading-relaxed text-lg mb-4">
                 {profile.bio || "No bio yet."}
               </p>
+              
+              {/* Skills */}
+              {profile.skills && profile.skills.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400 mb-3">Skills</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.skills.map((skill, index) => (
+                      <span
+                        key={index}
+                        className="px-4 py-2 bg-lime-100 text-lime-800 rounded-full text-sm font-medium border border-lime-200 hover:bg-lime-200 transition-colors"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Stats */}

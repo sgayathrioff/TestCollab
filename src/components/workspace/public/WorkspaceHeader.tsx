@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, Heart, Share2, Copy, Pencil, UserPlus } from "lucide-react";
+import { ArrowLeft, Eye, Heart, Share2, Copy, Pencil, UserPlus, Trash2 } from "lucide-react";
 
 interface WorkspaceHeaderProps {
   id: string;
@@ -27,6 +27,7 @@ interface WorkspaceHeaderProps {
   isOwner?: boolean;
   onEdit?: () => void;
   onInvite?: () => void;
+  onDelete?: () => void;
 }
 
 export function WorkspaceHeader({
@@ -48,6 +49,7 @@ export function WorkspaceHeader({
   isOwner = false,
   onEdit,
   onInvite,
+  onDelete,
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [liked, setLiked] = useState(isLiked);
@@ -81,13 +83,13 @@ export function WorkspaceHeader({
       {/* Header */}
       <header className="mb-10 float-in delay-1 relative">
         {/* Cover Image */}
-        <div className="w-full h-[250px] md:h-[350px] rounded-[48px] overflow-hidden relative bg-stone-200">
+        <div className="w-full h-62.5 md:h-87.5 rounded-[48px] overflow-hidden relative bg-stone-200">
           <img
             src={coverImage}
             alt={title}
             className="w-full h-full object-cover opacity-90"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+          <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent"></div>
         </div>
 
         {/* Info Card */}
@@ -153,6 +155,7 @@ export function WorkspaceHeader({
                   <button
                     onClick={onEdit}
                     className="w-full sm:w-14 h-14 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                    title="Edit workspace"
                   >
                     <Pencil className="w-5 h-5" />
                   </button>
@@ -161,9 +164,21 @@ export function WorkspaceHeader({
                   <button
                     onClick={onShare}
                     className="w-full sm:w-14 h-14 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                    title="Share workspace"
                   >
                     <Share2 className="w-6 h-6" />
                   </button>
+
+                  {/* Owner: Delete Button */}
+                  {onDelete && (
+                    <button
+                      onClick={onDelete}
+                      className="w-full sm:w-14 h-14 rounded-full border-2 border-red-200 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
+                      title="Delete workspace"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
 
                   {/* Owner: Invite Button */}
                   <button

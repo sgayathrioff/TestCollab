@@ -12,6 +12,7 @@ import {
 } from "@/components/workspace/public";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
+import { EditReferenceModal } from "@/components/workspace/EditReferenceModal";
 import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
 import { WorkspaceChat } from "@/components/workspace/chat";
 import type { ReferenceData, WorkspaceMember } from "@/types";
@@ -45,6 +46,9 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     deleteReference,
     removeMember,
     inviteMemberByEmail,
+    deleteWorkspace,
+    updateReference,
+    refetch,
   } = workspaceId ? workspaceHookResult : {};
 
   // Local state for UI
@@ -52,8 +56,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingReference, setEditingReference] = useState<ReferenceData | null>(null);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Collections and tags derived from references
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -84,26 +92,16 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       return;
     }
 
-    // Extract unique categories for collections
-    const categoryMap = new Map<string, number>();
-    references.forEach((ref: ReferenceData) => {
-      const category = ref.reference_category || "Uncategorized";
-      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
-    });
+    // For now, just show all references in one collection
+    // TODO: Implement proper category/folder feature when DB column is added
+    setCollections([
+      { id: "1", name: "All References", count: references.length }
+    ]);
 
-    const extractedCollections: Collection[] = Array.from(
-      categoryMap.entries()
-    ).map(([name, count], index) => ({
-      id: String(index + 1),
-      name,
-      count,
-    }));
-    setCollections(extractedCollections);
-
-    // Extract unique tags
+    // Extract unique tags from references
     const tagSet = new Set<string>();
     references.forEach((ref: ReferenceData) => {
-      (ref.reference_tags || []).forEach((tag: string) => tagSet.add(tag));
+      (ref.tags || []).forEach((tag) => tagSet.add(tag.tag_name));
     });
     setTags(Array.from(tagSet).slice(0, 8));
   }, [references]);
@@ -114,17 +112,14 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     const matchesSearch =
       searchQuery === "" ||
       ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ref.reference_tags?.some((tag: string) =>
-        tag.toLowerCase().includes(searchQuery.toLowerCase())
+      ref.tags?.some((tag) =>
+        tag.tag_name.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
-    // Collection filter
-    const matchesCollection =
-      activeCollection === null ||
-      ref.reference_category ===
-        collections.find((c) => c.id === activeCollection)?.name;
+    // Collection filter disabled until category feature is implemented
+    // const matchesCollection = activeCollection === null;
 
-    return matchesSearch && matchesCollection;
+    return matchesSearch;
   });
 
   // Handlers
@@ -193,6 +188,22 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           workspaceId={workspace.workspace_id}
+          onReferenceAdded={() => {
+            if (refetch) refetch();
+          }}
+        />
+      )}
+
+      {/* Edit Reference Modal */}
+      {permissions.canEdit && workspace && editingReference && updateReference && (
+        <EditReferenceModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingReference(null);
+          }}
+          reference={editingReference}
+          onUpdate={updateReference}
         />
       )}
 
@@ -208,6 +219,53 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           onInviteMember={inviteMemberByEmail!}
           onRemoveMember={removeMember!}
         />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {isDeleteConfirmOpen && workspace && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)} />
+          <div className="relative z-10 bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-5 mx-auto">
+              <svg className="w-7 h-7 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </div>
+            <h2 className="text-xl font-bold text-stone-900 text-center mb-2">Delete Workspace</h2>
+            <p className="text-stone-500 text-center text-sm mb-1">
+              Are you sure you want to delete <span className="font-bold text-stone-900">"{workspace.workspace_title}"</span>?
+            </p>
+            <p className="text-red-500 text-center text-xs mb-8">This will permanently delete all references, messages, and member data. This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                disabled={isDeleting}
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="flex-1 py-3 rounded-2xl border-2 border-stone-200 text-stone-700 font-bold hover:bg-stone-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!deleteWorkspace) return;
+                  setIsDeleting(true);
+                  try {
+                    await deleteWorkspace();
+                    showToast('Workspace deleted successfully');
+                    router.push(user?.id ? `/dashboard/${user.id}` : '/dashboard');
+                  } catch (err: any) {
+                    showToast(err.message || 'Failed to delete workspace');
+                    setIsDeleting(false);
+                    setIsDeleteConfirmOpen(false);
+                  }
+                }}
+                className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Deleting...</>
+                ) : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -229,6 +287,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         onShare={handleShare}
         onDuplicate={handleDuplicate}
         isOwner={!!isOwner}
+        onDelete={permissions.canDeleteWorkspace ? () => setIsDeleteConfirmOpen(true) : undefined}
       />
 
       {/* Main Content */}
@@ -289,21 +348,22 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                 key={ref.reference_id}
                 id={ref.reference_id}
                 title={ref.reference_title || "Untitled"}
-                source={ref.reference_source || ref.reference_url || ""}
+                source={ref.reference_metadata?.source || ref.reference_url || ""}
                 imageUrl={
-                  ref.reference_thumbnail ||
+                  ref.reference_metadata?.thumbnail ||
                   "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"
                 }
-                tags={ref.reference_tags || []}
+                tags={ref.tags?.map(t => t.tag_name) || []}
                 type={ref.reference_type as "image" | "link" | "color" | "video"}
-                colorPalette={
-                  ref.reference_type === "color"
-                    ? ["#2C3E50", "#E74C3C", "#ECF0F1", "#3498DB"]
-                    : undefined
-                }
+                colorPalette={ref.reference_metadata?.colorPalette}
                 onSave={() => handleSaveReference(ref.reference_id)}
                 onOpen={() => handleOpenReference(ref.reference_url)}
+                onEdit={() => {
+                  setEditingReference(ref);
+                  setIsEditModalOpen(true);
+                }}
                 onDelete={() => deleteReference?.(ref.reference_id)}
+                canEdit={permissions.canEdit}
                 canDelete={permissions.canEdit}
               />
             ))}

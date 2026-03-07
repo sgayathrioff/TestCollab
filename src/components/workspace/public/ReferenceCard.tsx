@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Download, Trash2 } from "lucide-react";
+import { ExternalLink, Download, Trash2, Edit } from "lucide-react";
 
 interface ReferenceCardProps {
   id: string;
@@ -13,7 +13,9 @@ interface ReferenceCardProps {
   onSave?: () => void;
   onOpen?: () => void;
   onDelete?: () => void;
+  onEdit?: () => void;
   canDelete?: boolean;
+  canEdit?: boolean;
 }
 
 export function ReferenceCard({
@@ -27,7 +29,9 @@ export function ReferenceCard({
   onSave,
   onOpen,
   onDelete,
+  onEdit,
   canDelete = false,
+  canEdit = false,
 }: ReferenceCardProps) {
   const renderPreview = () => {
     if (type === "color" && colorPalette) {
@@ -92,19 +96,35 @@ export function ReferenceCard({
 
   return (
     <div className="bg-white rounded-[32px] overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit">
-      {/* Delete button - only visible for owners on hover */}
-      {canDelete && onDelete && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="absolute top-3 right-3 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-lg"
-          title="Delete reference"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
+      {/* Action buttons - only visible on hover */}
+      <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Edit button */}
+        {canEdit && onEdit && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600 shadow-lg"
+            title="Edit reference"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+        )}
+        {/* Delete button */}
+        {canDelete && onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow-lg"
+            title="Delete reference"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
       {renderPreview()}
       <div className="p-5">
         <h3 className="font-bold text-lg text-stone-900 truncate">{title}</h3>

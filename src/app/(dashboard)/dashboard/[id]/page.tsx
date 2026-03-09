@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
-import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, Activity, Upload, FolderPlus, Settings } from "lucide-react";
+import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, Activity, Upload, FolderPlus } from "lucide-react";
 import Link from "next/link";
 
 export default function UserDashboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -145,12 +145,6 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
             <button className="h-14 w-14 rounded-full bg-white border border-stone-200 flex items-center justify-center hover:bg-stone-50 transition-colors text-stone-600">
               <Bell className="w-6 h-6" />
             </button>
-            <Link
-              href="/profile/setup"
-              className="h-14 w-14 rounded-full bg-white border border-stone-200 flex items-center justify-center hover:bg-stone-50 transition-colors text-stone-600 hover:scale-105 duration-300"
-            >
-              <Settings className="w-6 h-6" />
-            </Link>
           </div>
         </div>
 

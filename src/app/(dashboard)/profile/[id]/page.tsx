@@ -6,13 +6,22 @@ import {
   ArrowLeft,
   BadgeCheck,
   Globe,
-  Twitter,
+  Linkedin,
+  Link2,
   LayoutGrid,
   Star,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useFollow } from "@/hooks/useFollow";
 import { WorkspaceCard } from "@/components/explore";
+import { EditProfileModal } from "@/components/profile/EditProfileModal";
+
+interface CustomLink {
+  label: string;
+  url: string;
+}
 
 interface ProfileData {
   id: string;
@@ -22,9 +31,10 @@ interface ProfileData {
   avatar_url: string;
   cover_url: string;
   website_url: string;
-  twitter_url: string;
+  linkedin_url: string;
   is_verified: boolean;
   skills: string[];
+  custom_links: CustomLink[];
 }
 
 interface ProfileStats {
@@ -52,9 +62,10 @@ const mockProfile: ProfileData = {
   avatar_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
   cover_url: "",
   website_url: "https://example.com",
-  twitter_url: "https://twitter.com",
+  linkedin_url: "https://linkedin.com/in/sarahj",
   is_verified: true,
   skills: ["UI/UX Design", "Figma", "Branding"],
+  custom_links: [],
 };
 
 const mockStats: ProfileStats = {
@@ -114,8 +125,19 @@ export default function ProfilePage({
   const [stats, setStats] = useState<ProfileStats>(mockStats);
   const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
+  
+  // Use useFollow hook directly - will automatically check status on mount
+  const { isFollowing, toggleFollow, isLoading } = useFollow(profileId || "");
   const [activeTab, setActiveTab] = useState<"workspaces" | "saved">("workspaces");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editTab, setEditTab] = useState<"general" | "bio" | "skills" | "social">("general");
+
+  const openEdit = (tab: "general" | "bio" | "skills" | "social") => {
+    setEditTab(tab);
+    setIsEditModalOpen(true);
+  };
 
   // Unwrap params
   useEffect(() => {
@@ -138,12 +160,14 @@ export default function ProfilePage({
           .from("profiles")
           .select("*")
           .eq("profile_id", profileId)
-          .single();
+          .maybeSingle();
 
-        if (profileError) {
+        if (profileError || !profileData) {
           // Use mock data if profile not found
+          console.warn("Profile not found, using mock data", profileError);
           setProfile(mockProfile);
           setWorkspaces(mockWorkspaces);
+          setStats(mockStats);
         } else {
           setProfile({
             id: profileData.profile_id,
@@ -153,9 +177,15 @@ export default function ProfilePage({
             avatar_url: profileData.profile_avatar_url || mockProfile.avatar_url,
             cover_url: profileData.profile_cover_url || "",
             website_url: profileData.profile_website_url || "",
-            twitter_url: profileData.profile_twitter_url || "",
+            linkedin_url: profileData.profile_linkedin_url || "",
             is_verified: profileData.profile_is_verified || false,
             skills: profileData.profile_skills || [],
+            custom_links: (() => {
+              const raw = profileData.profile_custom_links;
+              if (!raw) return [];
+              if (Array.isArray(raw)) return raw;
+              try { return JSON.parse(raw); } catch { return []; }
+            })(),
           });
 
           // Fetch public workspaces for this user
@@ -177,11 +207,17 @@ export default function ProfilePage({
             .select("*", { count: "exact", head: true })
             .eq("uploaded_by_profile_id", profileId);
 
+          // Count total followers
+          const { count: followersCount } = await supabase
+            .from("followers")
+            .select("*", { count: "exact", head: true })
+            .eq("following_id", profileId);
+
           // Calculate stats
           const workspacesCount = workspacesData?.length || 0;
           setStats({
             spacesCount: workspacesCount,
-            followersCount: 0, // Would need a followers table
+            followersCount: followersCount || 0,
             refsSavedCount: refsCount || 0,
           });
         }
@@ -195,11 +231,17 @@ export default function ProfilePage({
     };
 
     fetchProfileData();
-  }, [profileId]);
+  }, [profileId, refreshTrigger]);
 
-  const handleFollowToggle = () => {
-    setIsFollowing(!isFollowing);
-    // TODO: Implement actual follow/unfollow logic with Supabase
+  const handleFollowToggle = async () => {
+    await toggleFollow();
+    // Optimistically update follow count
+    setStats(prev => ({
+        ...prev,
+        followersCount: isFollowing 
+            ? Math.max(0, prev.followersCount - 1) 
+            : prev.followersCount + 1
+    }));
   };
 
   const formatNumber = (num: number) => {
@@ -246,10 +288,10 @@ export default function ProfilePage({
     <div className="pb-20">
       {/* Back Button */}
       <button
-        onClick={() => router.push("/explore")}
+        onClick={() => user?.id === profile?.id ? router.push(`/dashboard/${user?.id}`) : router.push("/explore")}
         className="flex items-center gap-2 text-stone-500 font-bold hover:text-stone-900 transition-colors mb-6 ml-2"
       >
-        <ArrowLeft className="w-4 h-4" /> Back to Explore
+        <ArrowLeft className="w-4 h-4" /> {user?.id === profile?.id ? "Back to Dashboard" : "Back to Explore"}
       </button>
 
       {/* Profile Card */}
@@ -288,6 +330,15 @@ export default function ProfilePage({
                   {profile.is_verified && (
                     <BadgeCheck className="w-6 h-6 text-lime-600 fill-lime-100" />
                   )}
+                  {user?.id === profile.id && (
+                    <button 
+                      onClick={() => openEdit("general")} 
+                      className="p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors ml-2"
+                      title="Edit Profile"
+                    >
+                      <Pencil className="w-4 h-4 text-stone-600" />
+                    </button>
+                  )}
                 </h1>
                 <p className="text-lg text-stone-500 font-medium">
                   @{profile.username}
@@ -303,21 +354,44 @@ export default function ProfilePage({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-12 h-12 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                  title="Website"
                 >
                   <Globe className="w-5 h-5" />
                 </a>
               )}
-              {profile.twitter_url && (
+              {profile.linkedin_url && (
                 <a
-                  href={profile.twitter_url}
+                  href={profile.linkedin_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-12 h-12 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                  title="LinkedIn"
                 >
-                  <Twitter className="w-5 h-5" />
+                  <Linkedin className="w-5 h-5" />
                 </a>
               )}
-              {user?.id !== profile.id && (
+              {profile.custom_links?.map((link, idx) => (
+                <a
+                  key={idx}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-10 px-4 rounded-full border-2 border-stone-200 flex items-center gap-2 text-stone-600 hover:bg-stone-50 transition-colors text-sm font-medium"
+                  title={link.label}
+                >
+                  <Link2 className="w-4 h-4" />
+                  {link.label}
+                </a>
+              ))}
+              {user?.id === profile.id ? (
+                <button
+                  onClick={() => openEdit("social")}
+                  className="w-12 h-12 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                  title="Edit Social Links"
+                >
+                  <Pencil className="w-5 h-5" />
+                </button>
+              ) : (
                 <button
                   onClick={handleFollowToggle}
                   className={`px-8 py-3 rounded-full font-bold transition-colors text-lg ${
@@ -326,7 +400,7 @@ export default function ProfilePage({
                       : "bg-[#1c1917] text-white hover:bg-stone-800 shadow-md"
                   }`}
                 >
-                  {isFollowing ? "Following" : "Follow"}
+                  {isLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
                 </button>
               )}
             </div>
@@ -336,14 +410,36 @@ export default function ProfilePage({
           <div className="flex flex-col lg:flex-row justify-between gap-8">
             {/* Bio */}
             <div className="max-w-2xl">
-              <p className="text-stone-600 leading-relaxed text-lg mb-4">
-                {profile.bio || "No bio yet."}
-              </p>
+              <div className="relative group">
+                <p className="text-stone-600 leading-relaxed text-lg mb-4 pr-10">
+                  {profile.bio || "No bio yet."}
+                </p>
+                {user?.id === profile.id && (
+                  <button 
+                    onClick={() => openEdit("bio")} 
+                    className="absolute right-0 top-0 p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                    title="Edit Bio"
+                  >
+                    <Pencil className="w-4 h-4 text-stone-600" />
+                  </button>
+                )}
+              </div>
               
               {/* Skills */}
-              {profile.skills && profile.skills.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400 mb-3">Skills</h3>
+              {(profile.skills && profile.skills.length > 0 || user?.id === profile.id) && (
+                <div className="mt-4 relative group">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">Skills</h3>
+                    {user?.id === profile.id && (
+                      <button 
+                        onClick={() => openEdit("skills")} 
+                        className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                        title="Edit Skills"
+                      >
+                        <Pencil className="w-3 h-3 text-stone-600" />
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {profile.skills.map((skill, index) => (
                       <span
@@ -353,6 +449,9 @@ export default function ProfilePage({
                         {skill}
                       </span>
                     ))}
+                    {profile.skills.length === 0 && user?.id === profile.id && (
+                       <span className="text-stone-400 text-sm italic">Add skills...</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -457,6 +556,16 @@ export default function ProfilePage({
           </div>
         )}
       </div>
+      {/* Modal */}
+      {profile && (
+        <EditProfileModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          profile={profile}
+          onUpdate={() => setRefreshTrigger((prev) => prev + 1)}
+          initialTab={editTab}
+        />
+      )}
     </div>
   );
 }

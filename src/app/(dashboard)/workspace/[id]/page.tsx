@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useFollow } from "@/hooks/useFollow";
 import {
   ReferenceCard,
   WorkspaceHeader,
@@ -51,6 +52,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     updateReference,
     refetch,
   } = workspaceId ? workspaceHookResult : {};
+
+  const { isFollowing, toggleFollow } = useFollow(owner?.profile_id || "");
 
   // Local state for UI
   const [searchQuery, setSearchQuery] = useState("");
@@ -305,6 +308,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         onShare={handleShare}
         onDuplicate={handleDuplicate}
         isOwner={!!isOwner}
+        isFollowing={isFollowing}
+        onFollow={toggleFollow}
         onDelete={permissions.canDeleteWorkspace ? () => setIsDeleteConfirmOpen(true) : undefined}
         onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
       />

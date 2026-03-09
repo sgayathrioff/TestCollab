@@ -55,21 +55,17 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [liked, setLiked] = useState(isLiked);
-  const [following, setFollowing] = useState(isFollowing);
-
-  const formatNumber = (num: number) => {
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
-    return num.toString();
-  };
-
+  // Use prop if provided, otherwise local state (though usually controlled)
+  // Check if we are in controlled mode effectively by seeing if we have a valid isFollowing prop
+  
   const handleLike = () => {
     setLiked(!liked);
     onLike?.();
   };
 
-  const handleFollow = () => {
-    setFollowing(!following);
-    onFollow?.();
+  const formatNumber = (num: number) => {
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
+    return num.toString();
   };
 
   return (
@@ -136,16 +132,18 @@ export function WorkspaceHeader({
                     {author.name}
                   </p>
                 </div>
-                <button
-                  onClick={handleFollow}
-                  className={`ml-4 px-4 py-1.5 rounded-full border-2 text-sm font-bold transition-colors ${
-                    following
-                      ? "bg-stone-900 text-white border-stone-900"
-                      : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                  }`}
-                >
-                  {following ? "Following" : "Follow"}
-                </button>
+                {!isOwner && (
+                  <button
+                    onClick={onFollow}
+                    className={`ml-4 px-4 py-1.5 rounded-full border-2 text-sm font-bold transition-colors ${
+                      isFollowing
+                        ? "bg-stone-900 text-white border-stone-900"
+                        : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </button>
+                )}
               </div>
             </div>
 

@@ -16,6 +16,7 @@ export function SignUpForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [isRateLimited, setIsRateLimited] = useState(false);
 
   // Password Strength Logic
   const getStrength = (pass: string) => {
@@ -65,26 +66,92 @@ export function SignUpForm() {
     setLoading(true);
     setError("");
 
-    try{
-      const { error } = await supabase.auth.signUp({
+    // Client-side validation
+    if (!name.trim()) {
+      setError("Name is required");
+      setLoading(false);
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Email is required");
+      setLoading(false);
+      return;
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
+      setLoading(false);
+      return;
+    }
+
+    // Password validation
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log("Attempting signup with:", {
+        email: email.trim(),
+        name: name.trim(),
+        passwordLength: password.length
+      });
+
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
         options: {
           // This data is passed to the SQL Trigger 'handle_new_user'
           data: {
-            full_name: name,
-            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
+            full_name: name.trim(),
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name.trim())}`,
           },
         },
       });
 
-      if (error) throw error;
+      console.log("Signup response:", { data, error });
 
-      // 2. Show success message - user needs to confirm email
-      setSuccess(true);
+      if (error) {
+        console.error("Supabase signup error:", error);
+        throw error;
+      }
+
+      // Check if email confirmation is required
+      if (data.user && !data.user.email_confirmed_at) {
+        setSuccess(true);
+      } else if (data.user) {
+        // User is immediately confirmed, redirect to dashboard
+        router.push('/auth/callback');
+      }
 
     } catch (err: any) {
-      setError(err.message || "Failed to create account");
+      console.error("Signup error details:", err);
+      
+      // Handle specific error cases
+      if (err.message?.includes("email rate limit exceeded") || err.message?.includes("rate limit") || err.message?.includes("Too Many Requests")) {
+        setIsRateLimited(true);
+        setError("Too many signup attempts. Please wait 5-10 minutes before trying again, or try logging in if you already have an account.");
+        
+        // Auto-clear rate limit state after 5 minutes
+        setTimeout(() => {
+          setIsRateLimited(false);
+          setError("");
+        }, 5 * 60 * 1000);
+      } else if (err.message?.includes("User already registered")) {
+        setError("This email is already registered. Try logging in instead.");
+      } else if (err.message?.includes("Invalid email")) {
+        setError("Please enter a valid email address.");
+      } else if (err.message?.includes("Password")) {
+        setError("Password must be at least 6 characters with a mix of letters and numbers.");
+      } else if (err.message?.includes("Signup is disabled")) {
+        setError("Account creation is temporarily disabled. Please try again later.");
+      } else {
+        setError(err.message || "Failed to create account. Please check your information and try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -95,7 +162,38 @@ export function SignUpForm() {
       <h2 className="text-3xl font-bold text-center text-stone-900 mb-2">Create Account</h2>
       <p className="text-center text-stone-500 mb-6">Start organizing your creative flow.</p>
 
-      {error && <div className="text-red-500 text-center mb-4 text-sm">{error}</div>}
+      {error && (
+        <div className="text-red-500 text-center mb-4 text-sm font-medium bg-red-50 p-3 rounded-xl">
+          {error}
+          
+          {/* Rate limit specific help */}
+          {error.includes("rate limit") && (
+            <div className="mt-3 pt-3 border-t border-red-200">
+              <p className="text-xs text-red-600 mb-2">While you wait, you can:</p>
+              <div className="flex gap-2 justify-center">
+                <Link href="/login" className="px-3 py-1 bg-red-100 hover:bg-red-200 rounded-full text-xs font-medium transition-colors">
+                  Try Login Instead
+                </Link>
+                <button 
+                  onClick={() => {setError(""); setEmail(""); setPassword(""); setName("");}} 
+                  className="px-3 py-1 bg-red-100 hover:bg-red-200 rounded-full text-xs font-medium transition-colors"
+                >
+                  Clear Form
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Already registered help */}
+          {error.includes("already registered") && (
+            <div className="mt-2">
+              <Link href="/login" className="text-xs underline hover:no-underline">
+                Go to Login →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
       
       {success && (
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl">
@@ -190,10 +288,20 @@ export function SignUpForm() {
 
         <button 
           type="submit" 
-          disabled={loading}
-          className="w-full py-4 bg-[#1c1917] text-white rounded-2xl font-bold text-lg hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-stone-900/10 flex items-center justify-center gap-2 mt-2 disabled:opacity-70"
+          disabled={loading || isRateLimited}
+          className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 mt-2 transition-all shadow-xl shadow-stone-900/10 ${
+            isRateLimited 
+              ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+              : loading 
+                ? 'bg-stone-600 text-white' 
+                : 'bg-[#1c1917] text-white hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98]'
+          } disabled:opacity-70`}
         >
-          {loading ? "Creating..." : "Create Account"}
+          {isRateLimited 
+            ? "Rate Limited - Try Again Later" 
+            : loading 
+              ? "Creating..." 
+              : "Create Account"}
         </button>
       </form>
 

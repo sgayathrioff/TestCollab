@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { TrendingUp, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 import { WorkspaceCard, CreatorCard, ExploreSearchBar } from "@/components/explore";
 
 type FilterType = "all" | "workspaces" | "creators";
@@ -14,6 +15,8 @@ interface WorkspaceResult {
   workspace_description: string;
   workspace_owner_id: string;
   workspace_visibility: string;
+  matchedBy?: 'title' | 'tags' | 'both';
+  matchedTags?: string[];
   profiles?: {
     profile_id: string;
     display_name: string;
@@ -90,6 +93,7 @@ const defaultAvatar = "https://images.unsplash.com/photo-1633332755192-727a05c40
 
 export default function ExplorePage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -170,11 +174,25 @@ export default function ExplorePage() {
           // Get workspace counts for each user
           const creatorsWithCounts = await Promise.all(
             profilesData.map(async (profile) => {
-              const { count } = await supabase
+              const { count: spacesCount } = await supabase
                 .from("workspaces")
                 .select("*", { count: "exact", head: true })
                 .eq("workspace_owner_id", profile.profile_id)
                 .eq("workspace_visibility", "public");
+
+              const { count: followersCount } = await supabase
+                .from("followers")
+                .select("*", { count: "exact", head: true })
+                .eq("following_id", profile.profile_id);
+
+              let isFollowing = false;
+              if (user) {
+                // If user is logged in, check if following
+                // We use maybeSingle because the RPC might not return a row if false?? 
+                // Wait, RPC returns boolean directly.
+                const { data } = await supabase.rpc('is_following', { target_id: profile.profile_id });
+                isFollowing = !!data;
+              }
 
               return {
                 id: profile.profile_id,
@@ -182,9 +200,9 @@ export default function ExplorePage() {
                 username: profile.display_name?.toLowerCase().replace(/\s+/g, '') || profile.profile_id.slice(0, 8),
                 role: "Creator",
                 avatar: profile.profile_avatar_url || defaultAvatar,
-                spacesCount: count || 0,
-                followersCount: 0, // Would need a followers table
-                isFollowing: false,
+                spacesCount: spacesCount || 0,
+                followersCount: followersCount || 0,
+                isFollowing: isFollowing,
               };
             })
           );
@@ -201,17 +219,23 @@ export default function ExplorePage() {
     };
 
     fetchInitialData();
-  }, []);
+  }, [user]);
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) {
+      // Reset to original explore state when search is cleared
+      setHasSearched(false);
+      setSearchResults({ workspaces: [], creators: [] });
+      return;
+    }
     
     setSearchLoading(true);
     setHasSearched(true);
 
     try {
-      // Fetch workspaces matching the search query
-      const { data: workspaces, error: workspaceError } = await supabase
+      // Search workspaces by title AND by tags
+      // First, get workspaces matching the title
+      const { data: workspacesByTitle, error: titleError } = await supabase
         .from("workspaces")
         .select(`
           workspace_id,
@@ -224,7 +248,78 @@ export default function ExplorePage() {
         .eq("workspace_visibility", "public")
         .limit(12);
 
-      if (workspaceError) throw workspaceError;
+      if (titleError) throw titleError;
+
+      // Second, get workspaces that have references with matching tags
+      const { data: workspacesByTags, error: tagsError } = await supabase
+        .from("workspaces")
+        .select(`
+          workspace_id,
+          workspace_title,
+          workspace_description,
+          workspace_owner_id,
+          workspace_visibility,
+          references!inner(
+            reference_id,
+            reference_tags!inner(
+              tags!inner(
+                tag_name
+              )
+            )
+          )
+        `)
+        .ilike("references.reference_tags.tags.tag_name", `%${searchQuery}%`)
+        .eq("workspace_visibility", "public")
+        .limit(12);
+
+      // Combine results and remove duplicates
+      const workspaceMap = new Map();
+      
+      // Add workspaces found by title
+      (workspacesByTitle || []).forEach(ws => {
+        workspaceMap.set(ws.workspace_id, {
+          workspace_id: ws.workspace_id,
+          workspace_title: ws.workspace_title,
+          workspace_description: ws.workspace_description,
+          workspace_owner_id: ws.workspace_owner_id,
+          workspace_visibility: ws.workspace_visibility,
+          matchedBy: 'title' as const,
+          matchedTags: []
+        });
+      });
+
+      // Add workspaces found by tags (if query didn't error)
+      if (!tagsError && workspacesByTags) {
+        workspacesByTags.forEach((ws: any) => {
+          const matchedTags = ws.references?.flatMap((ref: any) =>
+            ref.reference_tags?.flatMap((rt: any) =>
+              rt.tags?.tag_name || []
+            ) || []
+          ).filter((tag: string) =>
+            tag.toLowerCase().includes(searchQuery.toLowerCase())
+          ) || [];
+
+          const existing = workspaceMap.get(ws.workspace_id);
+          if (existing) {
+            // Found by both title and tags
+            existing.matchedBy = 'both';
+            existing.matchedTags = [...new Set([...existing.matchedTags, ...matchedTags])];
+          } else {
+            // Found only by tags
+            workspaceMap.set(ws.workspace_id, {
+              workspace_id: ws.workspace_id,
+              workspace_title: ws.workspace_title,
+              workspace_description: ws.workspace_description,
+              workspace_owner_id: ws.workspace_owner_id,
+              workspace_visibility: ws.workspace_visibility,
+              matchedBy: 'tags' as const,
+              matchedTags: [...new Set(matchedTags)]
+            });
+          }
+        });
+      }
+
+      const workspaces = Array.from(workspaceMap.values());
 
       // Fetch owner profiles for workspaces
       let workspacesWithProfiles = workspaces || [];
@@ -313,29 +408,58 @@ export default function ExplorePage() {
                 {searchResults.workspaces.map((workspace, index) => {
                   const profile = getWorkspaceProfile(workspace);
                   return (
-                    <WorkspaceCard
-                      key={workspace.workspace_id}
-                      id={workspace.workspace_id}
-                      title={workspace.workspace_title || "Untitled Workspace"}
-                      description={workspace.workspace_description || ""}
-                      coverImage={placeholderImages[index % placeholderImages.length]}
-                      category="General"
-                      likes={0}
-                      author={
-                        profile
-                          ? {
-                              id: profile.profile_id,
-                              name: profile.display_name,
-                              avatar:
-                                profile.profile_avatar_url ||
-                                "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
-                            }
-                          : undefined
-                      }
-                      onAuthorClick={() =>
-                        profile && handleAuthorClick(profile.profile_id)
-                      }
-                    />
+                    <div key={workspace.workspace_id} className="relative">
+                      <WorkspaceCard
+                        id={workspace.workspace_id}
+                        title={workspace.workspace_title || "Untitled Workspace"}
+                        description={workspace.workspace_description || ""}
+                        coverImage={placeholderImages[index % placeholderImages.length]}
+                        category="General"
+                        likes={0}
+                        author={
+                          profile
+                            ? {
+                                id: profile.profile_id,
+                                name: profile.display_name,
+                                avatar:
+                                  profile.profile_avatar_url ||
+                                  "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
+                              }
+                            : undefined
+                        }
+                        onAuthorClick={() =>
+                          profile && handleAuthorClick(profile.profile_id)
+                        }
+                      />
+                      {/* Matched Tags Indicator */}
+                      {workspace.matchedBy === 'tags' && (
+                        <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-medium">
+                          Found by tags
+                        </div>
+                      )}
+                      {workspace.matchedBy === 'both' && (
+                        <div className="absolute top-4 left-4 bg-lime-100 text-lime-700 px-2 py-1 rounded-full text-xs font-medium">
+                          Name + tags match
+                        </div>
+                      )}
+                      {/* Show matched tags */}
+                      {workspace.matchedTags && workspace.matchedTags.length > 0 && (
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <div className="flex flex-wrap gap-1">
+                            {workspace.matchedTags.slice(0, 3).map((tag, tagIndex) => (
+                              <span key={tagIndex} className="bg-white/90 text-stone-600 px-2 py-0.5 rounded-full text-xs font-medium shadow-sm">
+                                {tag}
+                              </span>
+                            ))}
+                            {workspace.matchedTags.length > 3 && (
+                              <span className="bg-white/90 text-stone-400 px-2 py-0.5 rounded-full text-xs">
+                                +{workspace.matchedTags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

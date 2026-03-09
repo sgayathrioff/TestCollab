@@ -57,7 +57,7 @@ export function ExploreSearchBar({
           <Search className="w-6 h-6 text-stone-400 ml-4" />
           <input
             type="text"
-            placeholder="Search for workspaces, tags, or creators..."
+            placeholder="Search workspaces by name or tags, find creators..."
             value={value}
             onChange={(e) => onChange(e.target.value)}
             className="w-full bg-transparent border-none px-4 py-4 text-lg focus:outline-none text-stone-900 placeholder:text-stone-400 font-medium"
@@ -87,6 +87,11 @@ export function ExploreSearchBar({
             {filter.label}
           </button>
         ))}
+      </div>
+
+      {/* Search Help */}
+      <div className="text-center mt-4 text-sm text-stone-500">
+        <p>💡 Search by workspace names or reference tags (e.g. "design", "react", "marketing")</p>
       </div>
     </div>
   );

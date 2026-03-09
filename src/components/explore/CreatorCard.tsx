@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { useFollow } from "@/hooks/useFollow";
 
 interface CreatorCardProps {
   id: string;
@@ -12,7 +13,6 @@ interface CreatorCardProps {
   spacesCount: number;
   followersCount: number;
   isFollowing?: boolean;
-  onFollow?: (isFollowing: boolean) => void;
 }
 
 export function CreatorCard({
@@ -24,21 +24,19 @@ export function CreatorCard({
   spacesCount,
   followersCount,
   isFollowing: initialFollowing = false,
-  onFollow,
 }: CreatorCardProps) {
   const router = useRouter();
-  const [isFollowing, setIsFollowing] = useState(initialFollowing);
+  const { user } = useAuth();
+  const { isFollowing, toggleFollow, isLoading } = useFollow(id, initialFollowing);
 
   const formattedFollowers =
     followersCount >= 1000
       ? `${(followersCount / 1000).toFixed(1)}k`
       : followersCount.toString();
 
-  const handleFollowToggle = (e: React.MouseEvent) => {
+  const handleFollowToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const newFollowingState = !isFollowing;
-    setIsFollowing(newFollowingState);
-    onFollow?.(newFollowingState);
+    await toggleFollow();
   };
 
   const handleProfileClick = () => {
@@ -81,16 +79,19 @@ export function CreatorCard({
       </div>
 
       {/* Follow Button */}
-      <button
-        onClick={handleFollowToggle}
-        className={`w-full py-3 rounded-2xl font-bold transition-colors ${
-          isFollowing
-            ? "bg-[#1c1917] text-white hover:bg-stone-800 shadow-md"
-            : "bg-stone-100 text-stone-900 hover:bg-lime-200"
-        }`}
-      >
-        {isFollowing ? "Following" : "Follow"}
-      </button>
+      {user?.id !== id && (
+         <button
+          onClick={handleFollowToggle}
+          disabled={isLoading}
+          className={`w-full py-3 rounded-2xl font-bold transition-colors ${
+            isFollowing
+              ? "bg-[#1c1917] text-white hover:bg-stone-800 shadow-md"
+              : "bg-stone-100 text-stone-900 hover:bg-lime-200"
+          }`}
+        >
+          {isLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
+        </button>
+      )}
     </div>
   );
 }

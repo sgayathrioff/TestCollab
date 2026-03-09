@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Infinity, Search, Settings, LogOut, User } from "lucide-react";
+import { Infinity, Search, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { NotificationBell } from "@/components/ui/NotificationBell";
@@ -66,18 +66,8 @@ export default function DashboardLayout({
     e.preventDefault();
     setIsDropdownOpen(false);
     if (user?.id) {
-      const profileUrl = `/dashboard/${user.id}`;
-      router.push(profileUrl);
-    } else {
-      console.error("User ID not available");
+      router.push(`/profile/${user.id}`);
     }
-  };
-
-  const handleSettingsClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setIsDropdownOpen(false);
-    router.push("/settings");
   };
 
   // Show loading state while checking auth or profile completion
@@ -182,14 +172,6 @@ export default function DashboardLayout({
                       >
                         <User className="w-4 h-4" />
                         Profile
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={handleSettingsClick}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors w-full text-left"
-                      >
-                        <Settings className="w-4 h-4" />
-                        Settings
                       </button>
                     </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link"
-import { LayoutGrid, Compass, Settings } from "lucide-react" // Icons
+import { LayoutGrid, Compass, User } from "lucide-react" // Icons
 import { useAuth } from "@/hooks/useAuth"; // Import the useAuth hook
 
 export function Sidebar() {
@@ -23,8 +23,11 @@ export function Sidebar() {
         <Link href="/explore" className="flex items-center gap-2 p-2 hover:bg-gray-200 rounded">
            <Compass size={20} /> Explore
         </Link>
-        <Link href="/profile/setup" className="flex items-center gap-2 p-2 hover:bg-gray-200 rounded">
-           <Settings size={20} /> Profile Settings
+        <Link 
+          href={user ? `/profile/${user.id}` : "/login"} 
+          className="flex items-center gap-2 p-2 hover:bg-gray-200 rounded"
+        >
+           <User size={20} /> My Profile
         </Link>
       </nav>
     </aside>

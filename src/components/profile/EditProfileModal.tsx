@@ -187,7 +187,7 @@ export function EditProfileModal({
           profile_cover_url: finalCoverUrl,
           profile_website_url: website,
           profile_linkedin_url: linkedin,
-          profile_custom_links: JSON.stringify(finalCustomLinks),
+          profile_custom_links: JSON.stringify(customLinks),
           profile_updated_at: new Date().toISOString(),
         })
         .eq("profile_id", user.id)

@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import Fuse from 'fuse.js';
+import { supabase } from '@/lib/supabase';
 import { WorkspaceMember } from '@/types';
-import { X, UserPlus, Search, Crown, Shield, Trash2, Mail, Check, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Search, Crown, Shield, Trash2, Mail, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { expandSearchQuery } from '@/lib/conceptExpansion';
 
 interface ManageMembersModalProps {
   isOpen: boolean;
@@ -32,20 +35,86 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Smart search states
+  const [findQuery, setFindQuery] = useState('');
+  const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
+  const [filteredProfiles, setFilteredProfiles] = useState<any[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [activeTab, setActiveTab] = useState<'find' | 'email'>('find');
+
+  // Fetch available profiles on mount (excluding current members)
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const fetchAvailableProfiles = async () => {
+      setLoadingProfiles(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('profile_id, display_name, profile_avatar_url, profile_bio, profile_skills, profile_email')
+          .limit(100);
+
+        if (error) throw error;
+
+        // Filter out current members
+        const memberIds = new Set(members.map(m => m.profile_id));
+        const available = (data || []).filter(p => !memberIds.has(p.profile_id));
+        setAvailableProfiles(available);
+        setFilteredProfiles(available.slice(0, 6)); // Show first 6 by default
+      } catch (err) {
+        console.error('Error fetching profiles:', err);
+      } finally {
+        setLoadingProfiles(false);
+      }
+    };
+
+    fetchAvailableProfiles();
+  }, [isOpen, members]);
+
+  // Handle smart search
+  const handleFindQueryChange = (value: string) => {
+    setFindQuery(value);
+
+    if (!value.trim()) {
+      setFilteredProfiles(availableProfiles.slice(0, 6));
+      return;
+    }
+
+    // Expand query terms
+    const expandedTerms = expandSearchQuery(value);
+    const searchString = expandedTerms.length > 0 ? expandedTerms.join(' | ') : value;
+
+    // Fuse.js search
+    const fuse = new Fuse(availableProfiles, {
+      keys: [
+        { name: 'display_name', weight: 0.7 },
+        { name: 'profile_skills', weight: 0.6 },
+        { name: 'profile_bio', weight: 0.4 },
+      ],
+      threshold: 0.4,
+      useExtendedSearch: true,
+      includeScore: true,
+    });
+
+    const results = fuse.search(searchString);
+    setFilteredProfiles(results.slice(0, 6).map(r => r.item));
+  };
 
   if (!isOpen) return null;
 
-  const handleInviteSubmit = async (e: React.FormEvent) => {
+  const handleInviteSubmit = async (e: React.FormEvent, emailOverride?: string) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) return;
+    const emailToInvite = emailOverride || inviteEmail.trim();
+    if (!emailToInvite) return;
 
     setIsInviting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      await onInviteMember(inviteEmail.trim());
-      setSuccess(`Invitation sent to ${inviteEmail}`);
+      await onInviteMember(emailToInvite);
+      setSuccess(`Invitation sent to ${emailToInvite}`);
       setInviteEmail('');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -116,8 +185,112 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
             </div>
           )}
 
-          {/* Invite Section */}
+          {/* Tab Switcher */}
           {canManageMembers && (
+            <div className="flex gap-2 p-1 bg-stone-100 rounded-2xl">
+              <button
+                onClick={() => setActiveTab('find')}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                  activeTab === 'find'
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
+                )}
+              >
+                <Sparkles size={16} />
+                Find Collaborators
+              </button>
+              <button
+                onClick={() => setActiveTab('email')}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2",
+                  activeTab === 'email'
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
+                )}
+              >
+                <Mail size={16} />
+                Invite by Email
+              </button>
+            </div>
+          )}
+
+          {/* Find Collaborators Section */}
+          {canManageMembers && activeTab === 'find' && (
+            <div className="space-y-4">
+              {/* Smart Search */}
+              <div className="relative">
+                <Search className="absolute left-4 top-4 text-stone-400" size={18} />
+                <input
+                  type="text"
+                  value={findQuery}
+                  onChange={(e) => handleFindQueryChange(e.target.value)}
+                  placeholder='Try "I need someone good at interface design"...'
+                  className="w-full pl-12 pr-4 py-3.5 bg-stone-50 rounded-2xl border-2 border-stone-100 focus:border-lime-300 focus:bg-white outline-none text-stone-800 placeholder:text-stone-400 font-medium transition-all"
+                />
+              </div>
+
+              {/* Results */}
+              {loadingProfiles ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-stone-200 border-t-stone-900 rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                  {filteredProfiles.length > 0 ? (
+                    filteredProfiles.map((profile) => (
+                      <div
+                        key={profile.profile_id}
+                        className="flex items-center justify-between p-3 rounded-xl border border-stone-100 hover:border-lime-200 hover:bg-lime-50/50 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-stone-100 overflow-hidden">
+                            {profile.profile_avatar_url ? (
+                              <img src={profile.profile_avatar_url} alt={profile.display_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-stone-400 font-bold">
+                                {profile.display_name?.[0]?.toUpperCase() || '?'}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-stone-900 text-sm">{profile.display_name}</p>
+                            {profile.profile_skills && profile.profile_skills.length > 0 && (
+                              <div className="flex gap-1 mt-1">
+                                {profile.profile_skills.slice(0, 3).map((skill: string, idx: number) => (
+                                  <span key={idx} className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded-full font-medium">
+                                    {skill}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (profile.profile_email) {
+                              const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                              await handleInviteSubmit(fakeEvent, profile.profile_email);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-bold hover:bg-stone-700 transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          Invite
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-stone-400 text-sm">
+                      {findQuery ? `No one found matching "${findQuery}"` : 'Type to search for collaborators'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Invite by Email Section */}
+          {canManageMembers && activeTab === 'email' && (
             <div className="bg-stone-50 p-1.5 rounded-[24px]">
               <form onSubmit={handleInviteSubmit} className="flex gap-2">
                 <div className="relative flex-1">

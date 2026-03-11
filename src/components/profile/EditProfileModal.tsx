@@ -187,13 +187,13 @@ export function EditProfileModal({
           profile_cover_url: finalCoverUrl,
           profile_website_url: website,
           profile_linkedin_url: linkedin,
-          profile_custom_links: JSON.stringify(customLinks),
+          profile_custom_links: JSON.stringify(finalCustomLinks),
           profile_updated_at: new Date().toISOString(),
         })
         .eq("profile_id", user.id)
         .select();
 
-      console.log("[EditProfileModal] DB update result:", { error, updateData, customLinks });
+      console.log("[EditProfileModal] DB update result:", { error, updateData, finalCustomLinks });
       if (error) throw error;
 
       showToast("Profile updated successfully");

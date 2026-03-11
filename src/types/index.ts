@@ -51,6 +51,13 @@ export interface Reference {
   createdAt: number;
 }
 
+export interface WorkspaceFolder {
+  folder_id: string;
+  workspace_id: string;
+  folder_name: string;
+  folder_created_at: string;
+}
+
 export interface ReferenceData {
   reference_id: string;
   reference_title: string;
@@ -64,9 +71,16 @@ export interface ReferenceData {
   workspace_id: string;
   uploaded_by_profile_id: string;
   reference_created_at: string;
+  folder_id?: string | null;
   // Tags loaded separately via join
   tags?: Array<{ tag_id: string; tag_name: string; tag_color: string }>;
 }
+
+// A filter that can target: everything, a folder (optionally a sub-type), or uncategorized
+export type FolderFilter =
+  | null // All references
+  | { type: 'folder'; folderId: string; subType?: string }
+  | { type: 'uncategorized' };
 
 export interface Message {
   id: string;

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { WorkspaceMember, MemberRole, MemberPermissions } from "@/types";
+import { WorkspaceMember, MemberRole, MemberPermissions, WorkspaceFolder } from "@/types";
 
 interface WorkspaceData {
   workspace_id: string;
@@ -42,6 +42,7 @@ export function useWorkspace(workspaceId: string) {
   const [owner, setOwner] = useState<WorkspaceOwner | null>(null);
   const [references, setReferences] = useState<ReferenceData[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [folders, setFolders] = useState<WorkspaceFolder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,7 +167,20 @@ export function useWorkspace(workspaceId: string) {
       
       setReferences(transformedReferences);
 
-      // 4. Fetch workspace members
+      // 4. Fetch workspace folders (table may not exist until migration is run)
+      try {
+        const { data: foldersData, error: foldersError } = await supabase
+          .from('workspace_folders')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .order('folder_created_at', { ascending: true });
+        // Silently ignore if table doesn't exist yet (pre-migration)
+        setFolders(foldersError ? [] : (foldersData || []));
+      } catch {
+        setFolders([]);
+      }
+
+      // 5. Fetch workspace members
       const { data: membersData, error: membersError } = await supabase
         .from('workspace_members')
         .select('*')
@@ -522,6 +536,64 @@ export function useWorkspace(workspaceId: string) {
     }
   }, [user, workspace, getPermissions, addMember]);
 
+  // Create a new folder
+  const createFolder = useCallback(async (name: string): Promise<WorkspaceFolder> => {
+    if (!user) throw new Error('User not authenticated');
+    const permissions = getPermissions();
+    if (!permissions.canManageMembers) throw new Error('Only workspace owners can create folders');
+
+    const { data, error } = await supabase
+      .from('workspace_folders')
+      .insert({ workspace_id: workspaceId, folder_name: name.trim() })
+      .select()
+      .single();
+
+    if (error) throw error;
+    setFolders(prev => [...prev, data]);
+    return data;
+  }, [user, workspaceId, getPermissions]);
+
+  // Delete a folder (references become uncategorized)
+  const deleteFolder = useCallback(async (folderId: string): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    const permissions = getPermissions();
+    if (!permissions.canManageMembers) throw new Error('Only workspace owners can delete folders');
+
+    // Nullify folder_id on all references in this folder
+    await supabase
+      .from('references')
+      .update({ folder_id: null })
+      .eq('folder_id', folderId);
+
+    const { error } = await supabase
+      .from('workspace_folders')
+      .delete()
+      .eq('folder_id', folderId);
+
+    if (error) throw error;
+
+    setFolders(prev => prev.filter(f => f.folder_id !== folderId));
+    setReferences(prev => prev.map(r => r.folder_id === folderId ? { ...r, folder_id: null } : r));
+  }, [user, getPermissions]);
+
+  // Move a reference into a folder (or remove from folder)
+  const moveReference = useCallback(async (referenceId: string, folderId: string | null): Promise<void> => {
+    if (!user) throw new Error('User not authenticated');
+    const permissions = getPermissions();
+    if (!permissions.canEdit) throw new Error('You do not have permission to move references');
+
+    const { error } = await supabase
+      .from('references')
+      .update({ folder_id: folderId })
+      .eq('reference_id', referenceId);
+
+    if (error) throw error;
+
+    setReferences(prev =>
+      prev.map(r => r.reference_id === referenceId ? { ...r, folder_id: folderId } : r)
+    );
+  }, [user, getPermissions]);
+
   // Delete entire workspace (owner only)
   const deleteWorkspace = useCallback(async (): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
@@ -663,6 +735,7 @@ export function useWorkspace(workspaceId: string) {
     owner,
     references,
     members,
+    folders,
     
     // State
     loading,
@@ -685,5 +758,10 @@ export function useWorkspace(workspaceId: string) {
     removeMember,
     inviteMemberByEmail,
     deleteWorkspace,
+
+    // Folder management
+    createFolder,
+    deleteFolder,
+    moveReference,
   };
 }

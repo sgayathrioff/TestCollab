@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
@@ -16,14 +16,10 @@ import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
 import { EditReferenceModal } from "@/components/workspace/EditReferenceModal";
 import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
 import { TagManager } from "@/components/workspace/TagManager";
+import { CreateFolderModal } from "@/components/workspace/CreateFolderModal";
+import { ReferenceDetailsDrawer } from "@/components/workspace/ReferenceDetailsDrawer";
 import { WorkspaceChat } from "@/components/workspace/chat";
-import type { ReferenceData, WorkspaceMember } from "@/types";
-
-interface Collection {
-  id: string;
-  name: string;
-  count: number;
-}
+import type { ReferenceData, WorkspaceMember, FolderFilter } from "@/types";
 
 function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -41,6 +37,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     owner = null,  
     references = [],
     members = [],
+    folders = [],
     loading = !workspaceId ? false : true,
     isOwner = false,
     getCurrentUserRole,
@@ -51,25 +48,36 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     deleteWorkspace,
     updateReference,
     refetch,
+    createFolder,
+    deleteFolder,
+    moveReference,
   } = workspaceId ? workspaceHookResult : {};
 
   const { isFollowing, toggleFollow } = useFollow(owner?.profile_id || "");
 
   // Local state for UI
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCollection, setActiveCollection] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "compact">("grid");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingReference, setEditingReference] = useState<ReferenceData | null>(null);
+  const [selectedReference, setSelectedReference] = useState<ReferenceData | null>(null);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [expandedTypeGroups, setExpandedTypeGroups] = useState<Record<string, boolean>>({
+    image: true,
+    video: true,
+    audio: true,
+    document: true,
+    link: true,
+  });
 
   // Collections and tags derived from references
-  const [collections, setCollections] = useState<Collection[]>([]);
   const [tags, setTags] = useState<string[]>([]);
 
   // Get current user permissions (only when we have the functions)
@@ -89,21 +97,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     unwrapParams();
   }, [params]);
 
-  // Extract collections and tags from references when they change
+  // Extract tags from references when they change
   useEffect(() => {
     if (!references.length) {
-      setCollections([]);
       setTags([]);
       return;
     }
-
-    // For now, just show all references in one collection
-    // TODO: Implement proper category/folder feature when DB column is added
-    setCollections([
-      { id: "1", name: "All References", count: references.length }
-    ]);
-
-    // Extract unique tags from references
     const tagSet = new Set<string>();
     references.forEach((ref: ReferenceData) => {
       (ref.tags || []).forEach((tag) => tagSet.add(tag.tag_name));
@@ -111,9 +110,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     setTags(Array.from(tagSet).slice(0, 8));
   }, [references]);
 
-  // Filter references with proper typing
+  // Filter references based on active folder filter + search
   const filteredReferences = references.filter((ref: ReferenceData) => {
-    // Search filter
     const matchesSearch =
       searchQuery === "" ||
       ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -121,11 +119,65 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         tag.tag_name.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
-    // Collection filter disabled until category feature is implemented
-    // const matchesCollection = activeCollection === null;
+    let matchesFilter = true;
+    if (activeFilter === null) {
+      matchesFilter = true;
+    } else if (activeFilter.type === "uncategorized") {
+      matchesFilter = !ref.folder_id;
+    } else if (activeFilter.type === "folder") {
+      matchesFilter = ref.folder_id === activeFilter.folderId;
+      if (matchesFilter && activeFilter.subType) {
+        matchesFilter = ref.reference_type === activeFilter.subType;
+      }
+    }
 
-    return matchesSearch;
+    return matchesSearch && matchesFilter;
   });
+
+  // When a folder is active (no subType), group by reference_type
+  const shouldGroup =
+    activeFilter !== null &&
+    activeFilter.type === "folder" &&
+    !(activeFilter as any).subType &&
+    searchQuery === "";
+
+  const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode }> = {
+    image:    { label: "Images",    icon: <Image className="w-4 h-4" /> },
+    video:    { label: "Videos",    icon: <PlayCircle className="w-4 h-4" /> },
+    audio:    { label: "Audio",     icon: <Mic className="w-4 h-4" /> },
+    document: { label: "Documents", icon: <FileText className="w-4 h-4" /> },
+    link:     { label: "Links",     icon: <Link2 className="w-4 h-4" /> },
+  };
+
+  const REFERENCE_TYPE_ORDER = ["image", "video", "audio", "document", "link"];
+
+  const compactGroupedReferences = REFERENCE_TYPE_ORDER
+    .map((type) => [type, filteredReferences.filter((ref) => (ref.reference_type || "document") === type)] as const)
+    .filter(([, refs]) => refs.length > 0);
+
+  const groupedReferences = shouldGroup
+    ? Object.entries(
+        filteredReferences.reduce((acc, ref) => {
+          const t = ref.reference_type || "document";
+          if (!acc[t]) acc[t] = [];
+          acc[t].push(ref);
+          return acc;
+        }, {} as Record<string, ReferenceData[]>)
+      )
+    : null;
+
+  const toggleTypeGroup = (type: string) => {
+    setExpandedTypeGroups((prev) => ({
+      ...prev,
+      [type]: !prev[type],
+    }));
+  };
+
+  const getCardType = (refType?: string): "image" | "link" | "color" | "video" => {
+    if (refType === "image") return "image";
+    if (refType === "video") return "video";
+    return "link";
+  };
 
   // Handlers
   const handleLike = useCallback(async () => {
@@ -193,6 +245,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           workspaceId={workspace.workspace_id}
+          folders={folders}
           onReferenceAdded={() => {
             if (refetch) refetch();
           }}
@@ -230,6 +283,18 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
+      {/* Create Folder Modal */}
+      {isOwner && (
+        <CreateFolderModal
+          isOpen={isCreateFolderOpen}
+          onClose={() => setIsCreateFolderOpen(false)}
+          onCreate={async (name) => {
+            if (createFolder) await createFolder(name);
+            showToast(`Folder "${name}" created!`);
+          }}
+        />
+      )}
+
       {/* Tag Manager Modal */}
       {workspace && (
         <TagManager
@@ -241,6 +306,22 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           }}
         />
       )}
+
+      {/* Reference Details Drawer */}
+      <ReferenceDetailsDrawer
+        reference={selectedReference}
+        isOpen={!!selectedReference}
+        onClose={() => setSelectedReference(null)}
+        onOpen={handleOpenReference}
+        onEdit={(ref) => {
+          setSelectedReference(null);
+          setEditingReference(ref);
+          setIsEditModalOpen(true);
+        }}
+        onDelete={(referenceId) => deleteReference?.(referenceId)}
+        canEdit={permissions.canEdit}
+        canDelete={permissions.canEdit}
+      />
 
       {/* Delete Confirmation Dialog */}
       {isDeleteConfirmOpen && workspace && (
@@ -318,11 +399,21 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 float-in delay-2">
         {/* Sidebar */}
         <WorkspaceSidebar
-          collections={collections}
+          folders={folders}
+          references={references}
           tags={tags}
-          activeCollection={activeCollection}
-          onCollectionChange={setActiveCollection}
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
           onTagClick={handleTagClick}
+          canManageFolders={!!isOwner}
+          onCreateFolder={() => setIsCreateFolderOpen(true)}
+          onDeleteFolder={async (folderId) => {
+            if (deleteFolder) {
+              await deleteFolder(folderId);
+              setActiveFilter(null);
+              showToast("Folder deleted");
+            }
+          }}
         />
 
         {/* References Grid */}
@@ -356,42 +447,126 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
               >
                 <List className="w-5 h-5" />
               </button>
+              <button
+                onClick={() => setViewMode("compact")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${
+                  viewMode === "compact"
+                    ? "bg-stone-900 text-white"
+                    : "text-stone-500 bg-stone-100 hover:bg-stone-200"
+                }`}
+              >
+                Compact
+              </button>
             </div>
           </div>
 
-          {/* References Grid */}
-          <div
-            className={
-              viewMode === "grid"
-                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                : "flex flex-col gap-4"
-            }
-          >
-            {filteredReferences.map((ref: ReferenceData) => (
-              <ReferenceCard
-                key={ref.reference_id}
-                id={ref.reference_id}
-                title={ref.reference_title || "Untitled"}
-                source={ref.reference_metadata?.source || ref.reference_url || ""}
-                imageUrl={
-                  ref.reference_metadata?.thumbnail ||
-                  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"
-                }
-                tags={ref.tags?.map(t => t.tag_name) || []}
-                type={ref.reference_type as "image" | "link" | "color" | "video"}
-                colorPalette={ref.reference_metadata?.colorPalette}
-                onSave={() => handleSaveReference(ref.reference_id)}
-                onOpen={() => handleOpenReference(ref.reference_url)}
-                onEdit={() => {
-                  setEditingReference(ref);
-                  setIsEditModalOpen(true);
-                }}
-                onDelete={() => deleteReference?.(ref.reference_id)}
-                canEdit={permissions.canEdit}
-                canDelete={permissions.canEdit}
-              />
-            ))}
-          </div>
+          {/* References — compact abstraction mode */}
+          {viewMode === "compact" ? (
+            <div className="bg-white rounded-4xl border border-stone-100 overflow-hidden">
+              {compactGroupedReferences.map(([type, refs], index) => {
+                const isExpanded = !!expandedTypeGroups[type];
+                return (
+                  <section key={type} className={index !== 0 ? "border-t border-stone-100" : ""}>
+                    <button
+                      type="button"
+                      onClick={() => toggleTypeGroup(type)}
+                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-stone-50 transition-colors"
+                    >
+                      <span className="text-stone-400">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </span>
+                      <span className="text-stone-400">{SUB_TYPE_META[type]?.icon}</span>
+                      <h3 className="text-sm font-bold text-stone-700 uppercase tracking-widest text-left flex-1">
+                        {SUB_TYPE_META[type]?.label || type}
+                      </h3>
+                      <span className="text-xs bg-stone-100 text-stone-500 px-2 py-1 rounded-full font-bold">
+                        {refs.length}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="pb-2">
+                        {refs.map((ref) => (
+                          <button
+                            key={ref.reference_id}
+                            type="button"
+                            onClick={() => setSelectedReference(ref)}
+                            className="w-full px-5 py-3 text-left hover:bg-stone-50 transition-colors border-t border-stone-100/70"
+                          >
+                            <p className="text-sm font-semibold text-stone-900 truncate">
+                              {ref.reference_title || "Untitled"}
+                            </p>
+                            <p className="text-xs text-stone-400 truncate mt-0.5">
+                              {ref.reference_metadata?.source || ref.reference_url}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          ) : groupedReferences ? (
+            <div className="space-y-10">
+              {groupedReferences.map(([type, refs]) => (
+                <div key={type}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-stone-400">{SUB_TYPE_META[type]?.icon}</span>
+                    <h3 className="font-bold text-stone-700 text-sm uppercase tracking-widest">{SUB_TYPE_META[type]?.label || type}</h3>
+                    <span className="text-xs bg-stone-100 text-stone-400 px-2 py-0.5 rounded-full">{refs.length}</span>
+                  </div>
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
+                    {refs.map((ref: ReferenceData) => (
+                      <ReferenceCard
+                        key={ref.reference_id}
+                        id={ref.reference_id}
+                        title={ref.reference_title || "Untitled"}
+                        source={ref.reference_metadata?.source || ref.reference_url || ""}
+                        imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
+                        tags={ref.tags?.map(t => t.tag_name) || []}
+                        type={getCardType(ref.reference_type)}
+                        colorPalette={ref.reference_metadata?.colorPalette}
+                        folders={folders}
+                        currentFolderId={ref.folder_id}
+                        onSave={() => handleSaveReference(ref.reference_id)}
+                        onOpen={() => handleOpenReference(ref.reference_url)}
+                        onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
+                        onDelete={() => deleteReference?.(ref.reference_id)}
+                        onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
+                        canEdit={permissions.canEdit}
+                        canDelete={permissions.canEdit}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
+              {filteredReferences.map((ref: ReferenceData) => (
+                <ReferenceCard
+                  key={ref.reference_id}
+                  id={ref.reference_id}
+                  title={ref.reference_title || "Untitled"}
+                  source={ref.reference_metadata?.source || ref.reference_url || ""}
+                  imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
+                  tags={ref.tags?.map(t => t.tag_name) || []}
+                  type={getCardType(ref.reference_type)}
+                  colorPalette={ref.reference_metadata?.colorPalette}
+                  folders={folders}
+                  currentFolderId={ref.folder_id}
+                  onSave={() => handleSaveReference(ref.reference_id)}
+                  onOpen={() => handleOpenReference(ref.reference_url)}
+                  onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
+                  onDelete={() => deleteReference?.(ref.reference_id)}
+                  onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
+                  canEdit={permissions.canEdit}
+                  canDelete={permissions.canEdit}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Empty State */}
           {filteredReferences.length === 0 && (

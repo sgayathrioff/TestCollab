@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { X, MessageCircle, Users } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { X, MessageCircle, Users, RefreshCw, WifiOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
@@ -24,6 +24,8 @@ interface Member {
   member_role: string;
 }
 
+type RealtimeStatus = "connecting" | "connected" | "disconnected";
+
 interface WorkspaceChatProps {
   workspaceId: string;
   currentUserId: string | undefined;
@@ -44,6 +46,27 @@ export function WorkspaceChat({
   const [activeTab, setActiveTab] = useState<"chat" | "members">("chat");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("connecting");
+
+  // Profile cache — avoids re-fetching the same sender on every incoming message
+  const profileCache = useRef<Map<string, { display_name: string; profile_avatar_url: string }>>(new Map());
+  // Seen message IDs — prevents duplicates from optimistic updates + realtime events
+  const seenMessageIds = useRef<Set<string>>(new Set());
+
+  const resolveProfile = useCallback(async (profileId: string) => {
+    if (profileCache.current.has(profileId)) return profileCache.current.get(profileId)!;
+    const { data } = await supabase
+      .from("profiles")
+      .select("display_name, profile_avatar_url")
+      .eq("profile_id", profileId)
+      .single();
+    if (data) {
+      const profile = { display_name: data.display_name || "Unknown", profile_avatar_url: data.profile_avatar_url || "" };
+      profileCache.current.set(profileId, profile);
+      return profile;
+    }
+    return undefined;
+  }, []);
 
   // Check if user is a member of this workspace
   const checkMembership = useCallback(async () => {
@@ -98,22 +121,24 @@ export function WorkspaceChat({
           .select("profile_id, display_name, profile_avatar_url")
           .in("profile_id", senderIds);
 
-        const profileMap = new Map(
-          profiles?.map((p) => [p.profile_id, p]) || []
+        // Populate profile cache from the batch fetch
+        profiles?.forEach((p) =>
+          profileCache.current.set(p.profile_id, {
+            display_name: p.display_name || "Unknown",
+            profile_avatar_url: p.profile_avatar_url || "",
+          })
         );
 
         const messagesWithSenders = messagesData.map((msg) => ({
           ...msg,
-          sender: profileMap.get(msg.sender_profile_id)
-            ? {
-                display_name: profileMap.get(msg.sender_profile_id)?.display_name || "Unknown",
-                profile_avatar_url: profileMap.get(msg.sender_profile_id)?.profile_avatar_url || "",
-              }
-            : undefined,
+          sender: profileCache.current.get(msg.sender_profile_id),
         }));
 
+        // Reset seen IDs from the fresh fetch to avoid ghost duplicates on re-open
+        seenMessageIds.current = new Set(messagesWithSenders.map((m) => m.message_id));
         setMessages(messagesWithSenders);
       } else {
+        seenMessageIds.current = new Set();
         setMessages([]);
       }
     } catch (err) {
@@ -225,26 +250,11 @@ export function WorkspaceChat({
         return;
       }
 
-      // Optimistically add message to list
+      // Optimistically add message — mark as seen so realtime doesn't duplicate it
       if (newMessage) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("display_name, profile_avatar_url")
-          .eq("profile_id", currentUserId)
-          .single();
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            ...newMessage,
-            sender: profile
-              ? {
-                  display_name: profile.display_name || "You",
-                  profile_avatar_url: profile.profile_avatar_url || "",
-                }
-              : undefined,
-          },
-        ]);
+        seenMessageIds.current.add(newMessage.message_id);
+        const sender = await resolveProfile(currentUserId);
+        setMessages((prev) => [...prev, { ...newMessage, sender }]);
       }
     } catch (err: any) {
       console.error("Error sending message:", err);
@@ -263,9 +273,11 @@ export function WorkspaceChat({
     }
   }, [isOpen, workspaceId, checkMembership, fetchMessages, fetchMembers]);
 
-  // Real-time subscription
+  // Real-time subscription with status tracking and deduplication
   useEffect(() => {
     if (!isOpen || !workspaceId) return;
+
+    setRealtimeStatus("connecting");
 
     const channel = supabase
       .channel(`workspace-chat-${workspaceId}`)
@@ -277,52 +289,48 @@ export function WorkspaceChat({
           table: "messages",
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        (payload) => {
+        async (payload) => {
           const newMessage = payload.new as Message;
 
-          // Don't add if it's from current user (already added optimistically)
-          if (currentUserId && newMessage.sender_profile_id === currentUserId) {
-            return;
+          // Skip if already in state (covers own optimistic updates)
+          if (seenMessageIds.current.has(newMessage.message_id)) return;
+          seenMessageIds.current.add(newMessage.message_id);
+
+          // Show immediately with cached profile (may be undefined, will update below)
+          const cachedProfile = profileCache.current.get(newMessage.sender_profile_id);
+          setMessages((prev) => [...prev, { ...newMessage, sender: cachedProfile }]);
+
+          // Enrich with sender profile if not cached
+          if (!cachedProfile) {
+            const profile = await resolveProfile(newMessage.sender_profile_id);
+            if (profile) {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.message_id === newMessage.message_id ? { ...msg, sender: profile } : msg
+                )
+              );
+            }
           }
-
-          // Add message immediately without sender details
-          setMessages((prev) => [...prev, newMessage]);
-
-          // Fetch sender profile asynchronously and update the message
-          supabase
-            .from("profiles")
-            .select("display_name, profile_avatar_url")
-            .eq("profile_id", newMessage.sender_profile_id)
-            .single()
-            .then(({ data: profile }) => {
-              if (profile) {
-                setMessages((prev) => 
-                  prev.map((msg) =>
-                    msg.message_id === newMessage.message_id
-                      ? {
-                          ...msg,
-                          sender: {
-                            display_name: profile.display_name || "Unknown",
-                            profile_avatar_url: profile.profile_avatar_url || "",
-                          },
-                        }
-                      : msg
-                  )
-                );
-              }
-            })
-            .catch((err) => {
-              console.error("Error fetching sender profile:", err);
-            });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("connected");
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRealtimeStatus("disconnected");
+        } else {
+          setRealtimeStatus("connecting");
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, workspaceId]);
+  }, [isOpen, workspaceId, resolveProfile]);
 
   if (!isOpen) return null;
 
@@ -354,12 +362,44 @@ export function WorkspaceChat({
             Members ({members.length})
           </button>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 hover:bg-stone-100 rounded-full transition-colors"
-        >
-          <X className="w-5 h-5 text-stone-500" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Realtime status indicator */}
+          {activeTab === "chat" && (
+            <div className="flex items-center gap-1.5">
+              {realtimeStatus === "connected" && (
+                <span className="flex items-center gap-1 text-xs text-lime-600 font-medium">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
+                  </span>
+                  Live
+                </span>
+              )}
+              {realtimeStatus === "connecting" && (
+                <span className="flex items-center gap-1 text-xs text-amber-500 font-medium">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Connecting
+                </span>
+              )}
+              {realtimeStatus === "disconnected" && (
+                <button
+                  onClick={fetchMessages}
+                  className="flex items-center gap-1 text-xs text-red-500 font-medium hover:text-red-700"
+                  title="Click to reload messages"
+                >
+                  <WifiOff className="w-3 h-3" />
+                  Reconnect
+                </button>
+              )}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-stone-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5 text-stone-500" />
+          </button>
+        </div>
       </div>
 
       {/* Content */}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, Image, Tag } from "lucide-react";
+import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, Image, Tag, FolderOpen } from "lucide-react";
+import type { WorkspaceFolder } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { getFileTypeFromUrl, getFileTypeFromMime, ReferenceType } from "@/lib/fileType";
 
@@ -12,6 +13,7 @@ interface AddReferenceModalProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceId: string;
+  folders?: WorkspaceFolder[];
   onReferenceAdded?: (reference: any) => void;
 }
 
@@ -35,7 +37,7 @@ const TYPE_COLORS: Record<ReferenceType, string> = {
   image: "text-sky-500 bg-sky-50",
 };
 
-export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdded }: AddReferenceModalProps) {
+export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], onReferenceAdded }: AddReferenceModalProps) {
   const [activeTab, setActiveTab] = useState<'link' | 'upload'>('upload');
   const [title, setTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState(""); 
@@ -48,6 +50,9 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
   // Tags state
   const [availableTags, setAvailableTags] = useState<WorkspaceTag[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Folder state
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -244,6 +249,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
           reference_type: finalType,
           reference_url: finalUrl,
           reference_metadata: metadata,
+          ...(selectedFolderId ? { folder_id: selectedFolderId } : {}),
         })
         .select()
         .single();
@@ -305,6 +311,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
       setSelectedFile(null);
       setFileType("image");
       setSelectedTags([]);
+      setSelectedFolderId("");
       onClose();
 
     } catch (err: any) {
@@ -441,6 +448,28 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, onReferenceAdd
                className="w-full px-4 py-3 rounded-xl bg-white border border-stone-200 focus:outline-none focus:ring-2 focus:ring-lime-500/50 transition-all font-bold text-stone-900" 
              />
           </div>
+
+          {/* Folder Selector */}
+          {folders.length > 0 && (
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 flex items-center gap-2">
+                <FolderOpen className="w-3 h-3" />
+                Add to Folder (Optional)
+              </label>
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-stone-50 border border-stone-200 focus:outline-none focus:ring-2 focus:ring-lime-500/50 transition-all font-medium text-stone-900"
+              >
+                <option value="">None</option>
+                {folders.map((f) => (
+                  <option key={f.folder_id} value={f.folder_id}>
+                    {f.folder_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Tags Selector */}
           {availableTags.length > 0 ? (

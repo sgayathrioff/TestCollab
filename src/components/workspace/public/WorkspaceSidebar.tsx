@@ -73,12 +73,12 @@ export function WorkspaceSidebar({
       {/* Header */}
       <div className="flex items-center justify-between mb-4 px-2">
         <h3 className="font-bold text-stone-400 uppercase tracking-widest text-xs">
-          Folders
+          Collections
         </h3>
         {canManageFolders && (
           <button
             onClick={onCreateFolder}
-            title="New folder"
+            title="New collection"
             className="text-stone-400 hover:text-lime-600 transition-colors"
           >
             <FolderPlus className="w-4 h-4" />
@@ -136,7 +136,7 @@ export function WorkspaceSidebar({
                     type="button"
                     onClick={() => toggleExpand(folder.folder_id)}
                     className="shrink-0 text-inherit opacity-60 hover:opacity-100 p-2"
-                    aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+                    aria-label={isExpanded ? "Collapse collection" : "Expand collection"}
                   >
                     {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   </button>
@@ -166,7 +166,7 @@ export function WorkspaceSidebar({
                       e.stopPropagation();
                       onDeleteFolder?.(folder.folder_id);
                     }}
-                    title="Delete folder"
+                    title="Delete collection"
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-300 hover:text-red-500 transition-colors z-10"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

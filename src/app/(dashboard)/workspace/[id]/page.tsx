@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight, FolderInput } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
@@ -59,6 +59,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list" | "compact">("grid");
+  const [groupBy, setGroupBy] = useState<"type" | "folder" | "none">("type");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "alphabetical" | "reverse-alphabetical">("newest");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingReference, setEditingReference] = useState<ReferenceData | null>(null);
@@ -132,15 +134,98 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     }
 
     return matchesSearch && matchesFilter;
+  })
+  .sort((a, b) => {
+    switch (sortBy) {
+      case "newest":
+        return new Date(b.reference_created_at).getTime() - new Date(a.reference_created_at).getTime();
+      case "oldest":
+        return new Date(a.reference_created_at).getTime() - new Date(b.reference_created_at).getTime();
+      case "alphabetical":
+        return (a.reference_title || "").localeCompare(b.reference_title || "");
+      case "reverse-alphabetical":
+        return (b.reference_title || "").localeCompare(a.reference_title || "");
+      default:
+        return 0;
+    }
   });
 
-  // When a folder is active (no subType), group by reference_type
-  const shouldGroup =
-    activeFilter !== null &&
-    activeFilter.type === "folder" &&
-    !(activeFilter as any).subType &&
-    searchQuery === "";
+  const getGroupingMeta = (key: string, mode: "type" | "folder") => {
+    if (mode === "type") {
+      const meta = {
+        image:    { label: "Images",    icon: <Image className="w-4 h-4" /> },
+        video:    { label: "Videos",    icon: <PlayCircle className="w-4 h-4" /> },
+        audio:    { label: "Audio",     icon: <Mic className="w-4 h-4" /> },
+        document: { label: "Documents", icon: <FileText className="w-4 h-4" /> },
+        link:     { label: "Links",     icon: <Link2 className="w-4 h-4" /> },
+      }[key];
+      return meta || { label: key, icon: <FileText className="w-4 h-4" /> };
+    }
+    
+    // Folder mode
+    if (key === "uncategorized") {
+      return { label: "Uncategorized", icon: <List className="w-4 h-4" /> };
+    }
+    const folder = folders.find(f => f.folder_id === key);
+    return { label: folder?.folder_name || "Unknown Collection", icon: <FolderInput className="w-4 h-4" /> };
+  };
 
+  const groupedReferences = useMemo(() => {
+    if (groupBy === "none") return null;
+
+    if (groupBy === "type") {
+       // Only group if we have enough items or user explicitly wants it?
+       // For now, respect the old logic + manual override.
+       // The old logic was: group if folder is active (no subType) and no search.
+       // Let's stick to the manual toggle now. 
+       const groups = filteredReferences.reduce((acc, ref) => {
+          const t = ref.reference_type || "document";
+          if (!acc[t]) acc[t] = [];
+          acc[t].push(ref);
+          return acc;
+        }, {} as Record<string, ReferenceData[]>);
+        return Object.entries(groups).sort((a, b) => {
+          const order = ["image", "video", "audio", "document", "link"];
+          return order.indexOf(a[0]) - order.indexOf(b[0]);
+        });
+    }
+
+    if (groupBy === "folder") {
+      const groups = filteredReferences.reduce((acc, ref) => {
+        const f = ref.folder_id || "uncategorized";
+        if (!acc[f]) acc[f] = [];
+        acc[f].push(ref);
+        return acc;
+      }, {} as Record<string, ReferenceData[]>);
+      return Object.entries(groups);
+    }
+
+    return null;
+  }, [groupBy, filteredReferences, folders]);
+
+  const compactGroupedReferences = useMemo(() => {
+    // Determine keys based on view mode logic (usually type for compact list)
+    // But if we are in compact mode AND grouped by folder, we should show folders.
+    // The current compact view logic relies on `REFERENCE_TYPE_ORDER`.
+    // Let's adapt it.
+    
+    if (groupBy === "folder") {
+        const groups = filteredReferences.reduce((acc, ref) => {
+            const f = ref.folder_id || "uncategorized";
+            if (!acc[f]) acc[f] = [];
+            acc[f].push(ref);
+            return acc;
+        }, {} as Record<string, ReferenceData[]>);
+        return Object.entries(groups);
+    }
+    
+    // Default (Type)
+    const REFERENCE_TYPE_ORDER = ["image", "video", "audio", "document", "link"];
+    return REFERENCE_TYPE_ORDER
+        .map((type) => [type, filteredReferences.filter((ref) => (ref.reference_type || "document") === type)] as const)
+        .filter(([, refs]) => refs.length > 0);
+  }, [groupBy, filteredReferences]);
+  
   const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode }> = {
     image:    { label: "Images",    icon: <Image className="w-4 h-4" /> },
     video:    { label: "Videos",    icon: <PlayCircle className="w-4 h-4" /> },
@@ -148,23 +233,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     document: { label: "Documents", icon: <FileText className="w-4 h-4" /> },
     link:     { label: "Links",     icon: <Link2 className="w-4 h-4" /> },
   };
-
-  const REFERENCE_TYPE_ORDER = ["image", "video", "audio", "document", "link"];
-
-  const compactGroupedReferences = REFERENCE_TYPE_ORDER
-    .map((type) => [type, filteredReferences.filter((ref) => (ref.reference_type || "document") === type)] as const)
-    .filter(([, refs]) => refs.length > 0);
-
-  const groupedReferences = shouldGroup
-    ? Object.entries(
-        filteredReferences.reduce((acc, ref) => {
-          const t = ref.reference_type || "document";
-          if (!acc[t]) acc[t] = [];
-          acc[t].push(ref);
-          return acc;
-        }, {} as Record<string, ReferenceData[]>)
-      )
-    : null;
 
   const toggleTypeGroup = (type: string) => {
     setExpandedTypeGroups((prev) => ({
@@ -434,9 +502,35 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
               />
             </div>
             <div className="hidden sm:flex items-center gap-3">
-              <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
-                <ArrowDownUp className="w-4 h-4" /> Sort
-              </button>
+              <div className="relative group">
+                <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
+                  <span className="text-stone-400 font-normal">Group by:</span>
+                  <span className="capitalize">{groupBy === "type" ? "Type" : groupBy === "folder" ? "Collection" : "None"}</span>
+                  <ChevronDown className="w-3 h-3 text-stone-400" />
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-stone-100 p-1 hidden group-hover:block z-20">
+                  <button onClick={() => setGroupBy("type")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'type' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Type</button>
+                  <button onClick={() => setGroupBy("folder")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'folder' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Collection</button>
+                  <div className="h-px bg-stone-100 my-1" />
+                  <button onClick={() => setGroupBy("none")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'none' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>None</button>
+                </div>
+              </div>
+              <div className="w-px h-6 bg-stone-200 mx-1"></div>
+              <div className="relative group">
+                <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
+                  <ArrowDownUp className="w-4 h-4" /> 
+                  <span className="capitalize hidden xl:inline">{sortBy === "newest" ? "Recent" : sortBy === "a-z" ? "A-Z" : sortBy.replace("-", " ")}</span>
+                  <span className="xl:hidden">Sort</span>
+                  <ChevronDown className="w-3 h-3 text-stone-400" />
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-stone-100 p-1 hidden group-hover:block z-20">
+                  <button onClick={() => setSortBy("newest")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'newest' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Newest first</button>
+                  <button onClick={() => setSortBy("oldest")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'oldest' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Oldest first</button>
+                  <div className="h-px bg-stone-100 my-1" />
+                  <button onClick={() => setSortBy("alphabetical")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'alphabetical' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Alphabetical (A-Z)</button>
+                  <button onClick={() => setSortBy("reverse-alphabetical")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'reverse-alphabetical' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Alphabetical (Z-A)</button>
+                </div>
+              </div>
               <div className="w-px h-6 bg-stone-200 mx-1"></div>
               <button
                 onClick={() => setViewMode("grid")}
@@ -466,21 +560,24 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           {/* References — compact abstraction mode */}
           {viewMode === "compact" ? (
             <div className="bg-white rounded-4xl border border-stone-100 overflow-hidden">
-              {compactGroupedReferences.map(([type, refs], index) => {
-                const isExpanded = !!expandedTypeGroups[type];
+              {compactGroupedReferences.map(([key, refs], index) => {
+                // key might be a type or a folderId
+                const isExpanded = !!expandedTypeGroups[key];
+                const meta = getGroupingMeta(key, groupBy === "folder" ? "folder" : "type");
+                
                 return (
-                  <section key={type} className={index !== 0 ? "border-t border-stone-100" : ""}>
+                  <section key={key} className={index !== 0 ? "border-t border-stone-100" : ""}>
                     <button
                       type="button"
-                      onClick={() => toggleTypeGroup(type)}
+                      onClick={() => toggleTypeGroup(key)}
                       className="w-full flex items-center gap-3 px-5 py-4 hover:bg-stone-50 transition-colors"
                     >
                       <span className="text-stone-400">
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </span>
-                      <span className="text-stone-400">{SUB_TYPE_META[type]?.icon}</span>
+                      <span className="text-stone-400">{meta.icon}</span>
                       <h3 className="text-sm font-bold text-stone-700 uppercase tracking-widest text-left flex-1">
-                        {SUB_TYPE_META[type]?.label || type}
+                        {meta.label}
                       </h3>
                       <span className="text-xs bg-stone-100 text-stone-500 px-2 py-1 rounded-full font-bold">
                         {refs.length}
@@ -512,39 +609,42 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
             </div>
           ) : groupedReferences ? (
             <div className="space-y-10">
-              {groupedReferences.map(([type, refs]) => (
-                <div key={type}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-stone-400">{SUB_TYPE_META[type]?.icon}</span>
-                    <h3 className="font-bold text-stone-700 text-sm uppercase tracking-widest">{SUB_TYPE_META[type]?.label || type}</h3>
-                    <span className="text-xs bg-stone-100 text-stone-400 px-2 py-0.5 rounded-full">{refs.length}</span>
+              {groupedReferences.map(([key, refs]) => {
+                const meta = getGroupingMeta(key, groupBy === "folder" ? "folder" : "type");
+                return (
+                  <div key={key}>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="text-stone-400">{meta.icon}</span>
+                      <h3 className="font-bold text-stone-700 text-sm uppercase tracking-widest">{meta.label}</h3>
+                      <span className="text-xs bg-stone-100 text-stone-400 px-2 py-0.5 rounded-full">{refs.length}</span>
+                    </div>
+                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
+                      {refs.map((ref: ReferenceData) => (
+                        <ReferenceCard
+                          key={ref.reference_id}
+                          id={ref.reference_id}
+                          title={ref.reference_title || "Untitled"}
+                          source={ref.reference_metadata?.source || ref.reference_url || ""}
+                          imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
+                          tags={ref.tags?.map(t => t.tag_name) || []}
+                          type={getCardType(ref.reference_type)}
+                          colorPalette={ref.reference_metadata?.colorPalette}
+                          folders={folders}
+                          currentFolderId={ref.folder_id}
+                          onSave={() => handleSaveReference(ref.reference_id)}
+                          onOpen={() => handleOpenReference(ref.reference_url)}
+                          onClick={() => setSelectedReference(ref)}
+                          onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
+                          onDelete={() => deleteReference?.(ref.reference_id)}
+                          onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
+                          canEdit={permissions.canEdit}
+                          canDelete={permissions.canEdit}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-                    {refs.map((ref: ReferenceData) => (
-                      <ReferenceCard
-                        key={ref.reference_id}
-                        id={ref.reference_id}
-                        title={ref.reference_title || "Untitled"}
-                        source={ref.reference_metadata?.source || ref.reference_url || ""}
-                        imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
-                        tags={ref.tags?.map(t => t.tag_name) || []}
-                        type={getCardType(ref.reference_type)}
-                        colorPalette={ref.reference_metadata?.colorPalette}
-                        folders={folders}
-                        currentFolderId={ref.folder_id}
-                        onSave={() => handleSaveReference(ref.reference_id)}
-                        onOpen={() => handleOpenReference(ref.reference_url)}
-                        onClick={() => setSelectedReference(ref)}
-                        onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
-                        onDelete={() => deleteReference?.(ref.reference_id)}
-                        onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
-                        canEdit={permissions.canEdit}
-                        canDelete={permissions.canEdit}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>

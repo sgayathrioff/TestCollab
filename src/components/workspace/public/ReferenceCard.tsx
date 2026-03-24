@@ -19,6 +19,7 @@ interface ReferenceCardProps {
   onDelete?: () => void;
   onEdit?: () => void;
   onMove?: (folderId: string | null) => void;
+  onClick?: () => void;
   canDelete?: boolean;
   canEdit?: boolean;
 }
@@ -38,6 +39,7 @@ export function ReferenceCard({
   onDelete,
   onEdit,
   onMove,
+  onClick,
   canDelete = false,
   canEdit = false,
 }: ReferenceCardProps) {
@@ -104,7 +106,9 @@ export function ReferenceCard({
   };
 
   return (
-    <div className="bg-white rounded-[32px] overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit">
+    <div 
+      onClick={onClick}
+      className={`bg-white rounded-[32px] overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit ${onClick ? 'cursor-pointer' : ''}`}>
       {/* Action buttons - only visible on hover */}
       <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* Move to folder */}

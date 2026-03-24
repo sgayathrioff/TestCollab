@@ -310,6 +310,9 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       {/* Reference Details Drawer */}
       <ReferenceDetailsDrawer
         reference={selectedReference}
+        workspaceId={workspace?.workspace_id || ""}
+        currentUserId={user?.id}
+        workspaceMembers={members}
         isOpen={!!selectedReference}
         onClose={() => setSelectedReference(null)}
         onOpen={handleOpenReference}
@@ -531,6 +534,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                         currentFolderId={ref.folder_id}
                         onSave={() => handleSaveReference(ref.reference_id)}
                         onOpen={() => handleOpenReference(ref.reference_url)}
+                        onClick={() => setSelectedReference(ref)}
                         onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
                         onDelete={() => deleteReference?.(ref.reference_id)}
                         onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
@@ -558,6 +562,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
                   currentFolderId={ref.folder_id}
                   onSave={() => handleSaveReference(ref.reference_id)}
                   onOpen={() => handleOpenReference(ref.reference_url)}
+                  onClick={() => setSelectedReference(ref)}
                   onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
                   onDelete={() => deleteReference?.(ref.reference_id)}
                   onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}

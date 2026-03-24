@@ -391,7 +391,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         isOwner={!!isOwner}
         isFollowing={isFollowing}
         onFollow={toggleFollow}
-        onDelete={permissions.canDeleteWorkspace ? () => setIsDeleteConfirmOpen(true) : undefined}
+        onSettings={isOwner ? () => router.push(`/workspace/${workspace.workspace_id}/settings`) : undefined}
         onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
       />
 

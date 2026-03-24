@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
-import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, Activity, Upload, FolderPlus } from "lucide-react";
+import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, FolderPlus } from "lucide-react";
 import Link from "next/link";
 
 export default function UserDashboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,18 +29,24 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     if (authLoading || !userId) return;
 
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    if (user.id !== userId) {
+    if (user && user.id !== userId) {
       router.push("/");
       return;
     }
 
     const fetchWorkspaces = async () => {
       try {
+        const { data: memberWorkspaceIds, error: memberError } = await supabase
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("profile_id", user.id);
+
+        if (memberError) {
+          console.error("Error fetching member workspaces:", memberError);
+          setWorkspaces([]);
+          return;
+        }
+
         // Fetch workspaces where user is owner
         const { data: ownedWorkspaces, error: ownedError } = await supabase
           .from("workspaces")
@@ -49,19 +55,6 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
           .order("workspace_created_at", { ascending: false });
 
         if (ownedError) throw ownedError;
-
-        // Fetch workspaces where user is a member (but not owner)
-        const { data: memberWorkspaceIds, error: memberError } = await supabase
-          .from("workspace_members")
-          .select("workspace_id")
-          .eq("profile_id", user.id);
-
-        if (memberError) {
-          console.error("Error fetching member workspaces:", memberError);
-          // Continue with owned workspaces only
-          setWorkspaces(ownedWorkspaces || []);
-          return;
-        }
 
         let memberWorkspaces: any[] = [];
         if (memberWorkspaceIds && memberWorkspaceIds.length > 0) {
@@ -241,42 +234,6 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
           );
         })}
 
-        {/* Live Feed Card */}
-        <div className="bg-stone-200/50 p-6 rounded-[40px] flex flex-col">
-          <div className="flex items-center gap-2 mb-6 text-stone-500">
-            <Activity className="w-5 h-5" />
-            <span className="font-bold uppercase tracking-widest text-xs">Live Feed</span>
-          </div>
-
-          <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-            <div className="flex gap-4 items-start group">
-              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-stone-900 shrink-0 shadow-sm group-hover:scale-110 transition-transform">
-                <span className="font-bold">{user?.display_name?.[0] || 'U'}</span>
-              </div>
-              <div>
-                <p className="text-stone-900 leading-tight mb-1">
-                  <span className="font-semibold">You</span> created a new workspace
-                </p>
-                <p className="text-xs text-stone-500">Just now</p>
-              </div>
-            </div>
-            <div className="flex gap-4 items-start group">
-              <div className="w-10 h-10 rounded-full bg-[#1c1917] flex items-center justify-center text-white shrink-0 shadow-sm group-hover:scale-110 transition-transform">
-                <Upload className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-stone-900 leading-tight mb-1">
-                  <span className="font-semibold">System</span> backup completed
-                </p>
-                <p className="text-xs text-stone-500">1h ago</p>
-              </div>
-            </div>
-          </div>
-
-          <button className="mt-4 w-full py-3 rounded-2xl bg-white text-sm font-bold text-stone-900 shadow-sm hover:bg-stone-50 transition-colors">
-            View All Activity
-          </button>
-        </div>
       </div>
 
       {/* Empty State / CTA Section */}

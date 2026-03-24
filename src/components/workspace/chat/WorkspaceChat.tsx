@@ -47,6 +47,7 @@ export function WorkspaceChat({
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("connecting");
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
 
   // Profile cache — avoids re-fetching the same sender on every incoming message
   const profileCache = useRef<Map<string, { display_name: string; profile_avatar_url: string }>>(new Map());
@@ -332,6 +333,46 @@ export function WorkspaceChat({
     };
   }, [isOpen, workspaceId, resolveProfile]);
 
+  // Realtime presence tracking for online members
+  useEffect(() => {
+    if (!isOpen || !workspaceId || !currentUserId) return;
+
+    const presenceChannel = supabase.channel(`workspace-presence-${workspaceId}`, {
+      config: {
+        presence: {
+          key: currentUserId,
+        },
+      },
+    });
+
+    const syncPresenceUsers = () => {
+      const state = presenceChannel.presenceState() as Record<string, Array<{ user_id?: string }>>;
+      const users = new Set<string>();
+      Object.values(state).forEach((entries) => {
+        entries.forEach((entry) => {
+          if (entry?.user_id) users.add(entry.user_id);
+        });
+      });
+      setOnlineUserIds(users);
+    };
+
+    presenceChannel
+      .on("presence", { event: "sync" }, syncPresenceUsers)
+      .on("presence", { event: "join" }, syncPresenceUsers)
+      .on("presence", { event: "leave" }, syncPresenceUsers)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({ user_id: currentUserId });
+        }
+      });
+
+    return () => {
+      presenceChannel.untrack();
+      supabase.removeChannel(presenceChannel);
+      setOnlineUserIds(new Set());
+    };
+  }, [isOpen, workspaceId, currentUserId]);
+
   if (!isOpen) return null;
 
   return (
@@ -453,8 +494,11 @@ export function WorkspaceChat({
                   className="w-10 h-10 rounded-full"
                 />
                 <div className="flex-1">
-                  <p className="font-medium text-stone-900">
+                  <p className="font-medium text-stone-900 flex items-center gap-2">
                     {member.display_name}
+                    {onlineUserIds.has(member.profile_id) && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-lime-500 inline-block" />
+                    )}
                     {member.profile_id === currentUserId && (
                       <span className="text-stone-400 font-normal"> (you)</span>
                     )}

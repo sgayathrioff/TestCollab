@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"; // <--- NOW USING SUPABASE
 import { Card, CardContent } from "@/components/ui/Card";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal"; 
 import { 
-  Plus, Bell, LayoutGrid, FileText, Activity, ArrowUpRight, 
+  Plus, Bell, LayoutGrid, FileText, ArrowUpRight, 
   Users
 } from "lucide-react";
 import Link from "next/link";
@@ -161,16 +161,6 @@ export default function DashboardPage() {
             />
           ))}
                       
-            <div className="bg-stone-200/50 p-6 rounded-[40px] flex flex-col h-full min-h-75">
-               <div className="flex items-center gap-2 mb-6 text-stone-500">
-                  <Activity className="w-5 h-5" />
-                  <span className="font-bold uppercase tracking-widest text-xs">Live Feed</span>
-               </div>
-               <div className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                   <div className="text-sm text-stone-500 italic">No recent activity</div>
-               </div>
-            </div>
-
           </div>
         )}
       </div>

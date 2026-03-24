@@ -27,6 +27,7 @@ interface ReferenceData {
   workspace_id: string;
   uploaded_by_profile_id: string;
   reference_created_at: string;
+  folder_id?: string | null;
   tags?: Array<{ tag_id: string; tag_name: string; tag_color: string }>;
 }
 
@@ -123,7 +124,7 @@ export function useWorkspace(workspaceId: string) {
       // 2. Fetch workspace owner profile
       const { data: ownerData, error: ownerError } = await supabase
         .from('profiles')
-        .select('profile_id, display_name, profile_avatar_url')
+        .select('profile_id, display_name, profile_avatar_url, profile_email')
         .eq('profile_id', workspaceData.workspace_owner_id)
         .single();
 
@@ -271,10 +272,16 @@ export function useWorkspace(workspaceId: string) {
       // Notify all other workspace members about the new reference
       const otherMembers = members.filter(m => m.profile_id !== user.id);
       if (otherMembers.length > 0 && workspace) {
+        const { data: actorProfile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('profile_id', user.id)
+          .maybeSingle();
+        const actorName = actorProfile?.display_name || 'A workspace member';
         const notifications = otherMembers.map(m => ({
           recipient_profile_id: m.profile_id,
           notification_type: 'reference_added' as const,
-          notification_message: `A new reference "${referenceData.reference_title}" was added to ${workspace.workspace_title}`,
+          notification_message: `${actorName} added "${referenceData.reference_title}" to ${workspace.workspace_title}`,
           notification_link: `/workspace/${workspaceId}`,
         }));
         await supabase.from('notifications').insert(notifications);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, Heart, Share2, Copy, Pencil, UserPlus, Trash2, Tag } from "lucide-react";
+import { ArrowLeft, Eye, Heart, Share2, Copy, UserPlus, Tag, Settings } from "lucide-react";
 
 interface WorkspaceHeaderProps {
   id: string;
@@ -25,9 +25,8 @@ interface WorkspaceHeaderProps {
   onFollow?: () => void;
   isFollowing?: boolean;
   isOwner?: boolean;
-  onEdit?: () => void;
   onInvite?: () => void;
-  onDelete?: () => void;
+  onSettings?: () => void;
   onManageTags?: () => void;
 }
 
@@ -48,9 +47,8 @@ export function WorkspaceHeader({
   onFollow,
   isFollowing = false,
   isOwner = false,
-  onEdit,
   onInvite,
-  onDelete,
+  onSettings,
   onManageTags,
 }: WorkspaceHeaderProps) {
   const router = useRouter();
@@ -151,15 +149,6 @@ export function WorkspaceHeader({
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
               {isOwner ? (
                 <>
-                  {/* Owner: Edit Button */}
-                  <button
-                    onClick={onEdit}
-                    className="w-full sm:w-14 h-14 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
-                    title="Edit workspace"
-                  >
-                    <Pencil className="w-5 h-5" />
-                  </button>
-
                   {/* Owner: Manage Tags Button */}
                   {onManageTags && (
                     <button
@@ -171,23 +160,14 @@ export function WorkspaceHeader({
                     </button>
                   )}
 
-                  {/* Owner: Share Button */}
-                  <button
-                    onClick={onShare}
-                    className="w-full sm:w-14 h-14 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
-                    title="Share workspace"
-                  >
-                    <Share2 className="w-6 h-6" />
-                  </button>
-
-                  {/* Owner: Delete Button */}
-                  {onDelete && (
+                  {/* Owner: Settings Button */}
+                  {onSettings && (
                     <button
-                      onClick={onDelete}
-                      className="w-full sm:w-14 h-14 rounded-full border-2 border-red-200 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors"
-                      title="Delete workspace"
+                      onClick={onSettings}
+                      className="w-full sm:w-14 h-14 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                      title="Workspace settings"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Settings className="w-5 h-5" />
                     </button>
                   )}
 

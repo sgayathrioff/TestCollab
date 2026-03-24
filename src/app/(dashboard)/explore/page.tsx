@@ -112,8 +112,9 @@ export default function ExplorePage() {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        // Fetch public workspaces
-        const { data: workspacesData, error: workspacesError } = await supabase
+        // Fetch public workspaces and profiles in parallel
+        const [{ data: workspacesData, error: workspacesError }, { data: profilesData, error: profilesError }] = await Promise.all([
+          supabase
           .from("workspaces")
           .select(`
             workspace_id,
@@ -124,7 +125,12 @@ export default function ExplorePage() {
           `)
           .eq("workspace_visibility", "public")
           .order("workspace_created_at", { ascending: false })
-          .limit(6);
+          .limit(6),
+          supabase
+            .from("profiles")
+            .select("profile_id, display_name, profile_avatar_url")
+            .limit(12),
+        ]);
 
         if (workspacesError) {
           console.error("Error fetching workspaces:", workspacesError);
@@ -162,37 +168,30 @@ export default function ExplorePage() {
           setTrendingWorkspaces(transformedWorkspaces);
         }
 
-        // Fetch users/creators with their workspace counts
-        const { data: profilesData, error: profilesError } = await supabase
-          .from("profiles")
-          .select("profile_id, display_name, profile_avatar_url")
-          .limit(12);
-
         if (profilesError) {
           console.error("Error fetching profiles:", profilesError);
         } else if (profilesData && profilesData.length > 0) {
           // Get workspace counts for each user
           const creatorsWithCounts = await Promise.all(
             profilesData.map(async (profile) => {
-              const { count: spacesCount } = await supabase
-                .from("workspaces")
-                .select("*", { count: "exact", head: true })
-                .eq("workspace_owner_id", profile.profile_id)
-                .eq("workspace_visibility", "public");
+              const [spacesResp, followersResp, isFollowingResp] = await Promise.all([
+                supabase
+                  .from("workspaces")
+                  .select("*", { count: "exact", head: true })
+                  .eq("workspace_owner_id", profile.profile_id)
+                  .eq("workspace_visibility", "public"),
+                supabase
+                  .from("followers")
+                  .select("*", { count: "exact", head: true })
+                  .eq("following_id", profile.profile_id),
+                user
+                  ? supabase.rpc('is_following', { target_id: profile.profile_id })
+                  : Promise.resolve({ data: false as boolean | null }),
+              ]);
 
-              const { count: followersCount } = await supabase
-                .from("followers")
-                .select("*", { count: "exact", head: true })
-                .eq("following_id", profile.profile_id);
-
-              let isFollowing = false;
-              if (user) {
-                // If user is logged in, check if following
-                // We use maybeSingle because the RPC might not return a row if false?? 
-                // Wait, RPC returns boolean directly.
-                const { data } = await supabase.rpc('is_following', { target_id: profile.profile_id });
-                isFollowing = !!data;
-              }
+              const spacesCount = spacesResp.count;
+              const followersCount = followersResp.count;
+              const isFollowing = !!isFollowingResp.data;
 
               return {
                 id: profile.profile_id,
@@ -234,43 +233,51 @@ export default function ExplorePage() {
 
     try {
       // Search workspaces by title AND by tags
-      // First, get workspaces matching the title
-      const { data: workspacesByTitle, error: titleError } = await supabase
-        .from("workspaces")
-        .select(`
-          workspace_id,
-          workspace_title,
-          workspace_description,
-          workspace_owner_id,
-          workspace_visibility
-        `)
-        .ilike("workspace_title", `%${searchQuery}%`)
-        .eq("workspace_visibility", "public")
-        .limit(12);
-
-      if (titleError) throw titleError;
-
-      // Second, get workspaces that have references with matching tags
-      const { data: workspacesByTags, error: tagsError } = await supabase
-        .from("workspaces")
-        .select(`
-          workspace_id,
-          workspace_title,
-          workspace_description,
-          workspace_owner_id,
-          workspace_visibility,
-          references!inner(
-            reference_id,
-            reference_tags!inner(
-              tags!inner(
-                tag_name
+      const [
+        { data: workspacesByTitle, error: titleError },
+        { data: workspacesByTags, error: tagsError },
+        { data: creators, error: creatorError },
+      ] = await Promise.all([
+        supabase
+          .from("workspaces")
+          .select(`
+            workspace_id,
+            workspace_title,
+            workspace_description,
+            workspace_owner_id,
+            workspace_visibility
+          `)
+          .ilike("workspace_title", `%${searchQuery}%`)
+          .eq("workspace_visibility", "public")
+          .limit(12),
+        supabase
+          .from("workspaces")
+          .select(`
+            workspace_id,
+            workspace_title,
+            workspace_description,
+            workspace_owner_id,
+            workspace_visibility,
+            references!inner(
+              reference_id,
+              reference_tags!inner(
+                tags!inner(
+                  tag_name
+                )
               )
             )
-          )
-        `)
-        .ilike("references.reference_tags.tags.tag_name", `%${searchQuery}%`)
-        .eq("workspace_visibility", "public")
-        .limit(12);
+          `)
+          .ilike("references.reference_tags.tags.tag_name", `%${searchQuery}%`)
+          .eq("workspace_visibility", "public")
+          .limit(12),
+        supabase
+          .from("profiles")
+          .select("profile_id, display_name, profile_avatar_url")
+          .ilike("display_name", `%${searchQuery}%`)
+          .limit(12),
+      ]);
+
+      if (titleError) throw titleError;
 
       // Combine results and remove duplicates
       const workspaceMap = new Map();
@@ -339,13 +346,6 @@ export default function ExplorePage() {
           profiles: profileMap.get(ws.workspace_owner_id) || null,
         }));
       }
-
-      // Fetch creators matching the search query
-      const { data: creators, error: creatorError } = await supabase
-        .from("profiles")
-        .select("profile_id, display_name, profile_avatar_url")
-        .ilike("display_name", `%${searchQuery}%`)
-        .limit(12);
 
       if (creatorError) throw creatorError;
 

@@ -6,8 +6,9 @@ import {
   ArrowLeft,
   BadgeCheck,
   Globe,
+  Twitter,
   Linkedin,
-  Link2,
+  Link,
   LayoutGrid,
   Star,
   Pencil,
@@ -31,6 +32,7 @@ interface ProfileData {
   avatar_url: string;
   cover_url: string;
   website_url: string;
+  twitter_url: string;
   linkedin_url: string;
   is_verified: boolean;
   skills: string[];
@@ -62,6 +64,7 @@ const mockProfile: ProfileData = {
   avatar_url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
   cover_url: "",
   website_url: "https://example.com",
+  twitter_url: "",
   linkedin_url: "https://linkedin.com/in/sarahj",
   is_verified: true,
   skills: ["UI/UX Design", "Figma", "Branding"],
@@ -177,6 +180,7 @@ export default function ProfilePage({
             avatar_url: profileData.profile_avatar_url || mockProfile.avatar_url,
             cover_url: profileData.profile_cover_url || "",
             website_url: profileData.profile_website_url || "",
+            twitter_url: profileData.profile_twitter_url || "",
             linkedin_url: profileData.profile_linkedin_url || "",
             is_verified: profileData.profile_is_verified || false,
             skills: profileData.profile_skills || [],
@@ -348,41 +352,6 @@ export default function ProfilePage({
 
             {/* Action Buttons */}
             <div className="flex items-center gap-3 relative z-10">
-              {profile.website_url && (
-                <a
-                  href={profile.website_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-12 h-12 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
-                  title="Website"
-                >
-                  <Globe className="w-5 h-5" />
-                </a>
-              )}
-              {profile.linkedin_url && (
-                <a
-                  href={profile.linkedin_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-12 h-12 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
-                  title="LinkedIn"
-                >
-                  <Linkedin className="w-5 h-5" />
-                </a>
-              )}
-              {profile.custom_links?.map((link, idx) => (
-                <a
-                  key={idx}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-10 px-4 rounded-full border-2 border-stone-200 flex items-center gap-2 text-stone-600 hover:bg-stone-50 transition-colors text-sm font-medium"
-                  title={link.label}
-                >
-                  <Link2 className="w-4 h-4" />
-                  {link.label}
-                </a>
-              ))}
               {user?.id === profile.id ? (
                 <button
                   onClick={() => openEdit("social")}
@@ -414,6 +383,55 @@ export default function ProfilePage({
                 <p className="text-stone-600 leading-relaxed text-lg mb-4 pr-10">
                   {profile.bio || "No bio yet."}
                 </p>
+                <div className="flex items-center flex-wrap gap-2 mb-4">
+                  {profile.website_url && (
+                    <a
+                      href={profile.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-10 h-10 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                      title="Website"
+                    >
+                      <Globe className="w-4 h-4" />
+                    </a>
+                  )}
+                  {profile.twitter_url && (
+                    <a
+                      href={profile.twitter_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-10 h-10 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                      title="Twitter"
+                    >
+                      <Twitter className="w-4 h-4" />
+                    </a>
+                  )}
+                  {profile.linkedin_url && (
+                    <a
+                      href={profile.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-10 h-10 rounded-full border-2 border-stone-200 flex items-center justify-center text-stone-600 hover:bg-stone-50 transition-colors"
+                      title="LinkedIn"
+                    >
+                      <Linkedin className="w-4 h-4" />
+                    </a>
+                  )}
+
+                  {profile.custom_links?.map((customLink, idx) => (
+                    <a
+                      key={idx}
+                      href={customLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="h-9 px-3 rounded-full border-2 border-stone-200 flex items-center gap-2 text-stone-600 hover:bg-stone-50 transition-colors text-sm font-medium"
+                      title={customLink.label}
+                    >
+                      <Link className="w-3.5 h-3.5" />
+                      {customLink.label}
+                    </a>
+                  ))}
+                </div>
                 {user?.id === profile.id && (
                   <button 
                     onClick={() => openEdit("bio")} 

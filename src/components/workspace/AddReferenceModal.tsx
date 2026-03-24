@@ -9,6 +9,13 @@ import { getFileTypeFromUrl, getFileTypeFromMime, ReferenceType } from "@/lib/fi
 const STORAGE_BUCKET = "Link-UpWorkpace";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
+const TYPE_FALLBACK_THUMBNAILS: Record<ReferenceType, string> = {
+  image: "/window.svg",
+  video: "/next.svg",
+  audio: "/vercel.svg",
+  document: "/file.svg",
+};
+
 interface AddReferenceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -152,7 +159,6 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
   };
 
   const handleSubmit = async () => {
-    if (!title) return;
     if (activeTab === 'upload' && !selectedFile) return;
     if (activeTab === 'link' && !linkUrl) return;
 
@@ -174,6 +180,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       let finalUrl = linkUrl;
       let finalType: ReferenceType = "document";
       let metadata: Record<string, any> = {};
+      let resolvedTitle = title.trim();
 
       // Handle file upload
       if (activeTab === 'upload' && selectedFile) {
@@ -205,7 +212,13 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
         metadata = {
           size: formatFileSize(selectedFile.size),
           original_name: selectedFile.name, // Store original filename with special chars
+          source: selectedFile.name.split('.').pop()?.toUpperCase() || 'FILE',
+          thumbnail: finalType === "image" ? finalUrl : TYPE_FALLBACK_THUMBNAILS[finalType],
         };
+
+        if (!resolvedTitle) {
+          resolvedTitle = selectedFile.name.replace(/\.[^.]+$/, "");
+        }
       }
       // Handle URL import
       else if (activeTab === 'link' && linkUrl) {
@@ -233,19 +246,29 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
 
         const importData = await response.json();
         finalUrl = importData.publicUrl;
+        finalType = importData.type || finalType;
         metadata = {
+          ...(importData.metadata || {}),
           source_url: linkUrl,
+          thumbnail: importData.metadata?.thumbnail || TYPE_FALLBACK_THUMBNAILS[finalType],
         };
+
+        if (!resolvedTitle) {
+          resolvedTitle = (importData.title || importData.fileName || "Imported reference").replace(/\.[^.]+$/, "");
+        }
+      }
+
+      if (!resolvedTitle) {
+        resolvedTitle = "Untitled Reference";
       }
 
       // Insert reference into database
-      console.log('Inserting reference:', { title, finalType, finalUrl });
       const { data: refData, error: insertError } = await supabase
         .from("references")
         .insert({
           workspace_id: workspaceId,
           uploaded_by_profile_id: user.id,
-          reference_title: title,
+          reference_title: resolvedTitle,
           reference_type: finalType,
           reference_url: finalUrl,
           reference_metadata: metadata,
@@ -275,9 +298,10 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       }
 
       // Notify all other workspace members + owner about the new reference
-      const [{ data: wsMembers }, { data: wsData }] = await Promise.all([
+      const [{ data: wsMembers }, { data: wsData }, { data: actorProfile }] = await Promise.all([
         supabase.from('workspace_members').select('profile_id').eq('workspace_id', workspaceId),
         supabase.from('workspaces').select('workspace_title, workspace_owner_id').eq('workspace_id', workspaceId).single(),
+        supabase.from('profiles').select('display_name').eq('profile_id', user.id).maybeSingle(),
       ]);
 
       // Build recipient set: all non-uploader members + owner (if not the uploader)
@@ -290,10 +314,11 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       }
 
       if (recipientIds.size > 0 && wsData) {
+        const actorName = actorProfile?.display_name || 'A workspace member';
         const notifications = Array.from(recipientIds).map(profileId => ({
           recipient_profile_id: profileId,
           notification_type: 'reference_added',
-          notification_message: `A new reference "${title}" was added to ${wsData.workspace_title}`,
+          notification_message: `${actorName} added "${resolvedTitle}" to ${wsData.workspace_title}`,
           notification_link: `/workspace/${workspaceId}`,
         }));
         await supabase.from('notifications').insert(notifications);

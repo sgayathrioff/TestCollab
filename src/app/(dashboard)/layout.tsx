@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Infinity, Search, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/lib/supabase";
 
 export default function DashboardLayout({
   children,
@@ -17,49 +16,10 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [profileCheckDone, setProfileCheckDone] = useState(false);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [user, loading, router]);
 
   // Determine active tab based on current path
   const isExplorePage = pathname === "/explore" || pathname?.startsWith("/profile/");
   const isDashboardPage = !isExplorePage;
-
-  // Check if user has completed their profile
-  useEffect(() => {
-    const checkProfileCompletion = async () => {
-      // Skip check if already on profile setup page or user not loaded
-      if (!user?.id || pathname === "/profile/setup") {
-        setProfileCheckDone(true);
-        return;
-      }
-
-      try {
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("display_name, profile_bio")
-          .eq("profile_id", user.id)
-          .single();
-
-        // If no profile or missing display_name, redirect to setup
-        if (error || !profile || !profile.display_name) {
-          router.push("/profile/setup");
-        } else {
-          setProfileCheckDone(true);
-        }
-      } catch (err) {
-        console.error("Error checking profile:", err);
-        setProfileCheckDone(true);
-      }
-    };
-
-    checkProfileCompletion();
-  }, [user, pathname, router]);
 
   const handleProfileClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,7 +31,7 @@ export default function DashboardLayout({
   };
 
   // Show loading state while checking auth or profile completion
-  if (loading || (!profileCheckDone && pathname !== "/profile/setup")) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F2F2F0]">
         <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-900 rounded-full animate-spin"></div>
@@ -79,7 +39,7 @@ export default function DashboardLayout({
     );
   }
 
-  // Don't render anything if not authenticated (redirect will happen)
+  // Don't render anything if not authenticated (middleware handles redirects)
   if (!user) {
     return null;
   }
@@ -124,9 +84,9 @@ export default function DashboardLayout({
 
           {/* Search & Avatar */}
           <div className="flex items-center gap-2">
-            <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-50 transition-colors">
+            <Link href="/search" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-50 transition-colors">
               <Search className="w-5 h-5" />
-            </button>
+            </Link>
 
             <NotificationBell />
             

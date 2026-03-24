@@ -83,7 +83,11 @@ export function useNotifications() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      // Use clean-up function to avoid "WebSocket connection failed" warning
+      // Only attempt to remove channel if it exists
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [user]);
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Eye, Heart, Share2, Copy, UserPlus, Tag, Settings } from "lucide-react";
 
 interface WorkspaceHeaderProps {
@@ -69,12 +70,12 @@ export function WorkspaceHeader({
   return (
     <>
       {/* Back Button */}
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-stone-500 font-bold hover:text-stone-900 transition-colors mb-6 ml-2 float-in"
+      <Link
+        href={isOwner ? "/dashboard" : "/explore"}
+        className="inline-flex items-center gap-2 text-stone-500 font-bold hover:text-stone-900 transition-colors mb-6 ml-2 float-in"
       >
         <ArrowLeft className="w-4 h-4" /> {isOwner ? "Back to Dashboard" : "Back to Explore"}
-      </button>
+      </Link>
 
       {/* Header */}
       <header className="mb-10 float-in delay-1 relative">

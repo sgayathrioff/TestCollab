@@ -41,6 +41,7 @@ export default function DashboardLayout({
 
   // Don't render anything if not authenticated (middleware handles redirects)
   if (!user) {
+    router.push("/login");
     return null;
   }
 

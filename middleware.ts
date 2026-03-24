@@ -50,17 +50,11 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = pathname === "/login" || pathname === "/signup";
 
   if (isProtectedRoute && !user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/login";
-    redirectUrl.search = "";
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (isAuthRoute && user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = `/dashboard/${user.id}`;
-    redirectUrl.search = "";
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return response;
@@ -68,10 +62,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/workspace/:path*",
-    "/profile/setup",
-    "/login",
-    "/signup",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

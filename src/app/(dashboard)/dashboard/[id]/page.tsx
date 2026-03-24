@@ -43,8 +43,7 @@ export default function UserDashboardPage({ params }: { params: Promise<{ id: st
 
         if (memberError) {
           console.error("Error fetching member workspaces:", memberError);
-          setWorkspaces([]);
-          return;
+          // Don't return here, continue to fetch owned workspaces
         }
 
         // Fetch workspaces where user is owner

@@ -16,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body className={`${outfit.className} bg-[#F2F2F0] text-[#1c1917] antialiased`}>
         <ToastProvider>
           {children}

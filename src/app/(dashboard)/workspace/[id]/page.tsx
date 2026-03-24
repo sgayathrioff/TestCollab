@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight, FolderInput } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight, FolderInput, Activity } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
@@ -18,6 +18,7 @@ import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
 import { TagManager } from "@/components/workspace/TagManager";
 import { CreateFolderModal } from "@/components/workspace/CreateFolderModal";
 import { ReferenceDetailsDrawer } from "@/components/workspace/ReferenceDetailsDrawer";
+import { ActivityLogDrawer } from "@/components/workspace/ActivityLogDrawer";
 import { WorkspaceChat } from "@/components/workspace/chat";
 import type { ReferenceData, WorkspaceMember, FolderFilter } from "@/types";
 
@@ -67,6 +68,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   const [selectedReference, setSelectedReference] = useState<ReferenceData | null>(null);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
@@ -715,19 +717,43 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
+      {/* Activity Log Button - For all members */}
+      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
+        <button
+          onClick={() => setIsActivityLogOpen(true)}
+          className={`fixed bottom-8 ${
+            permissions.canManageMembers && permissions.canEdit ? 'right-46' : 
+            permissions.canManageMembers || permissions.canEdit ? 'right-28' : 
+            'right-8'
+          } w-14 h-14 bg-white rounded-full flex items-center justify-center text-stone-900 shadow-xl hover:scale-110 transition-all duration-300 z-30 border border-stone-100`}
+          title="Activity Log"
+        >
+          <Activity className="w-6 h-6" />
+        </button>
+      )}
+
       {/* Chat Button - Only for workspace members */}
       {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsChatOpen(true)}
           className={`fixed bottom-8 ${
-            permissions.canManageMembers && permissions.canEdit ? 'right-44' : 
-            permissions.canManageMembers || permissions.canEdit ? 'right-28' : 
-            'right-8'
+            permissions.canManageMembers && permissions.canEdit ? 'right-64' : 
+            permissions.canManageMembers || permissions.canEdit ? 'right-46' : 
+            'right-28'
           } w-14 h-14 bg-[#1c1917] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
         >
           <MessageCircle className="w-6 h-6" />
         </button>
       )}
+
+      {/* Activity Log Drawer */}
+      <ActivityLogDrawer
+        isOpen={isActivityLogOpen}
+        onClose={() => setIsActivityLogOpen(false)}
+        workspaceId={workspaceId || ""}
+        references={references}
+        members={members}
+      />
 
       {/* Chat Panel - Only for workspace members */}
       {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && workspaceId && (

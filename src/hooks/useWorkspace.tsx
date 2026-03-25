@@ -13,6 +13,7 @@ interface WorkspaceData {
   workspace_description: string;
   workspace_owner_id: string;
   workspace_visibility: string;
+  workspace_cover_image: string | null;
   workspace_created_at: string;
 }
 

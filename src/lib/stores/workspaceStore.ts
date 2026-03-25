@@ -17,6 +17,7 @@ type Workspace = {
   workspace_title: string
   workspace_description: string | null
   workspace_visibility: 'public' | 'private'
+  workspace_cover_image: string | null
   workspace_owner_id: string
   is_archived: boolean
 }

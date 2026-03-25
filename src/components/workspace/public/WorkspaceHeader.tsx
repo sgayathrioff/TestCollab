@@ -10,7 +10,7 @@ interface WorkspaceHeaderProps {
   id: string;
   title: string;
   description: string;
-  coverImage: string;
+  coverImage?: string;
   category: string;
   categoryEmoji?: string;
   views: number;
@@ -81,14 +81,16 @@ export function WorkspaceHeader({
       {/* Header */}
       <header className="mb-10 float-in delay-1 relative">
         {/* Cover Image */}
-        <div className="w-full h-62.5 md:h-87.5 rounded-[48px] overflow-hidden relative bg-stone-200">
-          <Image
-            src={coverImage}
-            alt={title}
-            fill
-            priority
-            className="w-full h-full object-cover opacity-90"
-          />
+        <div className="w-full h-62.5 md:h-87.5 rounded-[48px] overflow-hidden relative bg-linear-to-r from-lime-200 via-emerald-200 to-teal-200">
+          {coverImage && (
+            <Image
+              src={coverImage}
+              alt={title}
+              fill
+              priority
+              className="w-full h-full object-cover opacity-90"
+            />
+          )}
           <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent"></div>
         </div>
 

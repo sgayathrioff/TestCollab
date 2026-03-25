@@ -265,13 +265,6 @@ export default function WorkspaceClient({
     showToast("Duplicated to your Dashboard ✨");
   }, [user, router, showToast]);
 
-  const handleSaveReference = useCallback(
-    (refId: string) => {
-      showToast("Item Saved to your Library");
-    },
-    [showToast]
-  );
-
   const handleOpenReference = useCallback((url: string) => {
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
@@ -437,7 +430,7 @@ export default function WorkspaceClient({
         id={workspace?.workspace_id || ""}
         title={workspace?.workspace_title || ""}
         description={workspace?.workspace_description || ""}
-        coverImage="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1600"
+        coverImage={workspace?.workspace_cover_image || ""}
         category="General"
         categoryEmoji={getCategoryEmoji("General")}
         views={0}
@@ -617,7 +610,6 @@ export default function WorkspaceClient({
                           colorPalette={ref.reference_metadata?.colorPalette}
                           folders={typedFolders}
                           currentFolderId={ref.folder_id}
-                          onSave={() => handleSaveReference(ref.reference_id)}
                           onOpen={() => handleOpenReference(ref.reference_url)}
                           onClick={() => setSelectedReference(ref)}
                           onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
@@ -647,7 +639,6 @@ export default function WorkspaceClient({
                   colorPalette={ref.reference_metadata?.colorPalette}
                   folders={typedFolders}
                   currentFolderId={ref.folder_id}
-                  onSave={() => handleSaveReference(ref.reference_id)}
                   onOpen={() => handleOpenReference(ref.reference_url)}
                   onClick={() => setSelectedReference(ref)}
                   onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}

@@ -16,7 +16,6 @@ interface ReferenceCardProps {
   colorPalette?: string[];
   folders?: WorkspaceFolder[];
   currentFolderId?: string | null;
-  onSave?: () => void;
   onOpen?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -37,7 +36,6 @@ export function ReferenceCard({
   colorPalette,
   folders = [],
   currentFolderId,
-  onSave,
   onOpen,
   onDelete,
   onEdit,
@@ -58,17 +56,6 @@ export function ReferenceCard({
               style={{ backgroundColor: color }}
             />
           ))}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSave?.();
-              }}
-              className="px-5 py-2.5 bg-white text-stone-900 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg"
-            >
-              Copy Hex
-            </button>
-          </div>
         </div>
       );
     }
@@ -83,15 +70,6 @@ export function ReferenceCard({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSave?.();
-            }}
-            className="px-5 py-2.5 bg-white text-stone-900 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg"
-          >
-            Save
-          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();

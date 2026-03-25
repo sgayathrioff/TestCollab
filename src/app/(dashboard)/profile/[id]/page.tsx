@@ -249,6 +249,19 @@ export default function ProfilePage({
     }));
   };
 
+  const handleRemoveBanner = async () => {
+    if (!user?.id || user.id !== profile.id) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ profile_cover_url: null })
+      .eq("profile_id", user.id);
+
+    if (!error) {
+      setProfile((prev) => (prev ? { ...prev, cover_url: "" } : prev));
+    }
+  };
+
   const formatNumber = (num: number) => {
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return num.toString();
@@ -312,6 +325,26 @@ export default function ProfilePage({
               priority
               className="w-full h-full object-cover"
             />
+          )}
+          {user?.id === profile.id && (
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openEdit("general")}
+                className="px-3 py-1.5 rounded-full bg-white/85 text-stone-800 text-xs font-bold hover:bg-white transition-colors"
+              >
+                Change Banner
+              </button>
+              {profile.cover_url && (
+                <button
+                  type="button"
+                  onClick={handleRemoveBanner}
+                  className="px-3 py-1.5 rounded-full bg-white/85 text-red-600 text-xs font-bold hover:bg-white transition-colors"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           )}
         </div>
 

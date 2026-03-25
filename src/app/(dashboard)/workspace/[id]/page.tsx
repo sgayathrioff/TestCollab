@@ -47,7 +47,7 @@ export default async function PublicWorkspacePage({
   const [workspaceResp, referencesResp, membersResp, foldersResp] = await Promise.all([
     supabase
       .from("workspaces")
-      .select("workspace_id, workspace_title, workspace_description, workspace_visibility, workspace_owner_id, is_archived, workspace_created_at")
+      .select("workspace_id, workspace_title, workspace_description, workspace_visibility, workspace_owner_id, workspace_cover_image, is_archived, workspace_created_at")
       .eq("workspace_id", workspaceId)
       .single(),
     supabase

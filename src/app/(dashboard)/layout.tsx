@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Infinity, Search, LogOut, User } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +17,12 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
 
   // Determine active tab based on current path
   const isExplorePage = pathname === "/explore" || pathname?.startsWith("/profile/");
@@ -42,7 +48,6 @@ export default function DashboardLayout({
 
   // Don't render anything if not authenticated (middleware handles redirects)
   if (!user) {
-    router.push("/login");
     return null;
   }
 

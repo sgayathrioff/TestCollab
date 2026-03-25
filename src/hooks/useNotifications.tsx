@@ -24,6 +24,16 @@ export function useNotifications() {
     }
 
     const fetchNotifications = async () => {
+      const isAbortLikeError = (message: string) =>
+        message.includes('AbortError') ||
+        message.includes('signal is aborted') ||
+        message.includes('aborted without reason');
+
+      const isTransientNetworkError = (message: string) =>
+        message.toLowerCase().includes('failed to fetch') ||
+        message.toLowerCase().includes('networkerror') ||
+        message.toLowerCase().includes('err_insufficient_resources');
+
       try {
         setLoading(true);
         const { data, error } = await supabase
@@ -32,7 +42,15 @@ export function useNotifications() {
           .eq('recipient_profile_id', user.id)
           .order('notification_created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          const message = error.message || 'Unknown notifications fetch error';
+          if (isAbortLikeError(message) || isTransientNetworkError(message)) {
+            return;
+          }
+          setNotifications([]);
+          console.error('Error fetching notifications:', message);
+          return;
+        }
 
         // Transform data to match Notification interface if necessary
         const formattedData: Notification[] = (data || []).map((item: any) => ({
@@ -41,7 +59,12 @@ export function useNotifications() {
 
         setNotifications(formattedData);
       } catch (err) {
-        console.error('Error fetching notifications:', err);
+        const message = err instanceof Error ? err.message : 'Unknown notifications fetch error';
+        if (isAbortLikeError(message) || isTransientNetworkError(message)) {
+          return;
+        }
+        setNotifications([]);
+        console.error('Error fetching notifications:', message);
       } finally {
         setLoading(false);
       }

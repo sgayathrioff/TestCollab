@@ -10,11 +10,11 @@ type Profile = {
 }
 
 type AuthStore = {
-  user: { id: string; email: string } | null
+  user: { id: string; email?: string } | null
   profile: Profile | null
   isLoading: boolean
-  setUser: (user: AuthStore['user']) => void
-  setProfile: (profile: Profile | null) => void
+  setUser: (u: AuthStore['user']) => void
+  setProfile: (p: Profile | null) => void
   setIsLoading: (v: boolean) => void
   clear: () => void
 }

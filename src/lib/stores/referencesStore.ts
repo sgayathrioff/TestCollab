@@ -17,8 +17,8 @@ type ReferencesStore = {
   references: Reference[]
   setReferences: (refs: Reference[]) => void
   addReference: (ref: Reference) => void
-  updateReference: (reference_id: string, updates: Partial<Reference>) => void
-  removeReference: (reference_id: string) => void
+  updateReference: (id: string, updates: Partial<Reference>) => void
+  removeReference: (id: string) => void
 }
 
 export const useReferencesStore = create<ReferencesStore>((set) => ({
@@ -29,12 +29,12 @@ export const useReferencesStore = create<ReferencesStore>((set) => ({
       ? state.references
       : [...state.references, ref],
   })),
-  updateReference: (reference_id, updates) => set((state) => ({
+  updateReference: (id, updates) => set((state) => ({
     references: state.references.map(r =>
-      r.reference_id === reference_id ? { ...r, ...updates } : r
+      r.reference_id === id ? { ...r, ...updates } : r
     ),
   })),
-  removeReference: (reference_id) => set((state) => ({
-    references: state.references.filter(r => r.reference_id !== reference_id),
+  removeReference: (id) => set((state) => ({
+    references: state.references.filter(r => r.reference_id !== id),
   })),
 }))

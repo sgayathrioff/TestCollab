@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase"; // <--- NOW USING SUPABASE
 import { Card, CardContent } from "@/components/ui/Card";
@@ -174,7 +175,7 @@ function WorkspaceCard({ id, title, type, image, updated }: any) {
     <Link href={`/workspace/${id}`}>
       <div className="group bg-white p-3 pb-6 rounded-[40px] hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer border border-transparent hover:border-stone-100 h-full">
         <div className="aspect-4/3 rounded-4xl overflow-hidden relative mb-5">
-          <img src={image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={title} />
+          <Image src={image} fill loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={title} />
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
           <button className="absolute top-4 right-4 w-10 h-10 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:text-black">
             <ArrowUpRight className="w-5 h-5" />

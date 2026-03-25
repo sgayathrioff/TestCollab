@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 
 interface Message {
   message_id: string;
@@ -98,13 +99,16 @@ export function MessageList({ messages, currentUserId, loading }: MessageListPro
                 >
                   {/* Avatar */}
                   {!isOwnMessage && (
-                    <img
+                    <Image
                       src={
                         message.sender?.profile_avatar_url ||
                         "https://api.dicebear.com/7.x/avataaars/svg?seed=default"
                       }
                       alt={message.sender?.display_name || "User"}
-                      className="w-8 h-8 rounded-full flex-shrink-0"
+                      width={32}
+                      height={32}
+                      loading="lazy"
+                      className="w-8 h-8 rounded-full shrink-0"
                     />
                   )}
 
@@ -121,7 +125,7 @@ export function MessageList({ messages, currentUserId, loading }: MessageListPro
                         {message.sender?.display_name || "Unknown"}
                       </p>
                     )}
-                    <p className="text-sm leading-relaxed break-words">
+                    <p className="text-sm leading-relaxed wrap-break-word">
                       {message.message_content}
                     </p>
                     <p

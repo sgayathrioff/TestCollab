@@ -14,11 +14,7 @@ export default async function ExplorePage() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          } catch {}
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
         },
       },
     }
@@ -37,10 +33,5 @@ export default async function ExplorePage() {
       .limit(20),
   ]);
 
-  return (
-    <ExploreClient
-      initialPublicWorkspaces={(publicWorkspaces || []) as any[]}
-      initialProfiles={(profiles || []) as any[]}
-    />
-  );
+  return <ExploreClient initialWorkspaces={publicWorkspaces || []} initialProfiles={profiles || []} />;
 }

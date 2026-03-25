@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import { X, Camera, Plus, Loader2, Trash2, Link2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -245,7 +246,7 @@ export function EditProfileModal({
                 {/* Avatar */}
                 <div className="flex items-center gap-6">
                   <div className="relative group w-24 h-24 rounded-full overflow-hidden bg-stone-100">
-                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                    <Image src={avatarPreview} alt="Avatar" fill loading="lazy" className="w-full h-full object-cover" />
                     <div 
                       onClick={() => fileInputRef.current?.click()}
                       className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -277,7 +278,7 @@ export function EditProfileModal({
                 <div>
                   <h3 className="font-bold text-stone-900 mb-2">Cover Image</h3>
                   <div className="relative group w-full h-32 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 cursor-pointer" onClick={() => coverInputRef.current?.click()}>
-                    {coverPreview && <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />}
+                    {coverPreview && <Image src={coverPreview} alt="Cover" fill loading="lazy" className="w-full h-full object-cover" />}
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                       <Camera className="w-6 h-6 text-white" />
                     </div>

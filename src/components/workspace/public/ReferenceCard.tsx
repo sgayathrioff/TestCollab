@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ExternalLink, Download, Trash2, Edit, FolderInput, Check } from "lucide-react";
 import type { WorkspaceFolder } from "@/types";
 
@@ -49,7 +50,7 @@ export function ReferenceCard({
   const renderPreview = () => {
     if (type === "color" && colorPalette) {
       return (
-        <div className="aspect-[4/3] bg-stone-100 relative overflow-hidden flex flex-col">
+        <div className="aspect-4/3 bg-stone-100 relative overflow-hidden flex flex-col">
           {colorPalette.map((color, index) => (
             <div
               key={index}
@@ -73,10 +74,12 @@ export function ReferenceCard({
     }
 
     return (
-      <div className="aspect-[4/3] bg-stone-100 relative overflow-hidden">
-        <img
+      <div className="aspect-4/3 bg-stone-100 relative overflow-hidden">
+        <Image
           src={imageUrl}
           alt={title}
+          fill
+          loading="lazy"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]">
@@ -110,7 +113,7 @@ export function ReferenceCard({
   return (
     <div 
       onClick={onClick}
-      className={`bg-white rounded-[32px] overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit ${onClick ? 'cursor-pointer' : ''}`}>
+      className={`bg-white rounded-4xl overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit ${onClick ? 'cursor-pointer' : ''}`}>
       {/* Action buttons - only visible on hover */}
       <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* Move to folder */}

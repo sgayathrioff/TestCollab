@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { ExternalLink, Pencil, Trash2, X, Tag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { ReferenceData, WorkspaceMember } from "@/types";
@@ -343,9 +344,11 @@ export function ReferenceDetailsDrawer({
 
         <div className="p-6 space-y-6">
           <div className="rounded-2xl overflow-hidden border border-stone-100 bg-stone-50 aspect-4/3">
-            <img
+            <Image
               src={reference.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
               alt={reference.reference_title || "Untitled"}
+              fill
+              loading="lazy"
               className="w-full h-full object-cover"
             />
           </div>
@@ -439,9 +442,12 @@ export function ReferenceDetailsDrawer({
                     comments.map((comment) => (
                       <div key={comment.id} className="rounded-xl border border-stone-100 p-3 bg-stone-50">
                         <div className="flex items-center gap-2 mb-2">
-                          <img
+                          <Image
                             src={comment.author?.profile_avatar_url || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=80"}
                             alt={comment.author?.display_name || "User"}
+                            width={24}
+                            height={24}
+                            loading="lazy"
                             className="w-6 h-6 rounded-full object-cover"
                           />
                           <span className="text-sm font-bold text-stone-800">{comment.author?.display_name || "Unknown user"}</span>
@@ -482,9 +488,12 @@ export function ReferenceDetailsDrawer({
                           onClick={() => handleMentionPick(member.handle)}
                           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-stone-50 text-left"
                         >
-                          <img
+                          <Image
                             src={member.avatar || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=80"}
                             alt={member.displayName}
+                            width={20}
+                            height={20}
+                            loading="lazy"
                             className="w-5 h-5 rounded-full object-cover"
                           />
                           <span className="text-sm text-stone-700 font-medium">{member.displayName}</span>

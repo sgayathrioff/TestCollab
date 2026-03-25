@@ -22,7 +22,7 @@ import { CreateFolderModal } from "@/components/workspace/CreateFolderModal";
 import { ReferenceDetailsDrawer } from "@/components/workspace/ReferenceDetailsDrawer";
 import { ActivityLogDrawer } from "@/components/workspace/ActivityLogDrawer";
 import { WorkspaceChat } from "@/components/workspace/chat";
-import type { ReferenceData, WorkspaceMember, FolderFilter } from "@/types";
+import type { ReferenceData, WorkspaceMember, WorkspaceFolder, FolderFilter } from "@/types";
 
 interface WorkspaceClientProps {
   workspaceId: string;
@@ -81,6 +81,10 @@ export default function WorkspaceClient({
     moveReference,
   } = useWorkspace(workspaceId);
 
+  const typedReferences = (references || []) as ReferenceData[];
+  const typedMembers = (members || []) as WorkspaceMember[];
+  const typedFolders = (folders || []) as WorkspaceFolder[];
+
   const { isFollowing, toggleFollow } = useFollow(owner?.profile_id || "");
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,18 +121,18 @@ export default function WorkspaceClient({
   };
 
   useEffect(() => {
-    if (!references.length) {
+    if (!typedReferences.length) {
       setTags([]);
       return;
     }
     const tagSet = new Set<string>();
-    references.forEach((ref: ReferenceData) => {
+    typedReferences.forEach((ref) => {
       (ref.tags || []).forEach((tag) => tagSet.add(tag.tag_name));
     });
     setTags(Array.from(tagSet).slice(0, 8));
-  }, [references]);
+  }, [typedReferences]);
 
-  const filteredReferences = references.filter((ref: ReferenceData) => {
+  const filteredReferences = typedReferences.filter((ref) => {
     const matchesSearch =
       searchQuery === "" ||
       ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -180,7 +184,7 @@ export default function WorkspaceClient({
     if (key === "uncategorized") {
       return { label: "Uncategorized", icon: <List className="w-4 h-4" /> };
     }
-    const folder = folders.find(f => f.folder_id === key);
+    const folder = typedFolders.find(f => f.folder_id === key);
     return { label: folder?.folder_name || "Unknown Collection", icon: <FolderInput className="w-4 h-4" /> };
   };
 
@@ -211,7 +215,7 @@ export default function WorkspaceClient({
     }
 
     return null;
-  }, [groupBy, filteredReferences, folders]);
+  }, [groupBy, filteredReferences, typedFolders]);
 
   const compactGroupedReferences = useMemo(() => {
     if (groupBy === "folder") {
@@ -307,7 +311,7 @@ export default function WorkspaceClient({
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           workspaceId={workspace.workspace_id}
-          folders={folders}
+          folders={typedFolders}
           onReferenceAdded={() => {
             if (refetch) refetch();
           }}
@@ -334,7 +338,7 @@ export default function WorkspaceClient({
         <ManageMembersModal
           isOpen={isMembersModalOpen}
           onClose={() => setIsMembersModalOpen(false)}
-          members={members}
+          members={typedMembers}
           currentUserId={user?.id}
           ownerId={workspace.workspace_owner_id}
           canManageMembers={permissions.canManageMembers}
@@ -369,7 +373,7 @@ export default function WorkspaceClient({
         reference={selectedReference}
         workspaceId={workspace?.workspace_id || ""}
         currentUserId={user?.id}
-        workspaceMembers={members}
+        workspaceMembers={typedMembers}
         isOpen={!!selectedReference}
         onClose={() => setSelectedReference(null)}
         onOpen={handleOpenReference}
@@ -455,8 +459,8 @@ export default function WorkspaceClient({
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 float-in delay-2">
         <WorkspaceSidebar
-          folders={folders}
-          references={references}
+          folders={typedFolders}
+          references={typedReferences}
           tags={tags}
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
@@ -600,7 +604,7 @@ export default function WorkspaceClient({
                       <span className="text-xs bg-stone-100 text-stone-400 px-2 py-0.5 rounded-full">{refs.length}</span>
                     </div>
                     <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-                      {refs.map((ref: ReferenceData) => (
+                      {refs.map((ref) => (
                         <ReferenceCard
                           key={ref.reference_id}
                           id={ref.reference_id}
@@ -611,7 +615,7 @@ export default function WorkspaceClient({
                           tags={ref.tags?.map(t => t.tag_name) || []}
                           type={getCardType(ref.reference_type)}
                           colorPalette={ref.reference_metadata?.colorPalette}
-                          folders={folders}
+                          folders={typedFolders}
                           currentFolderId={ref.folder_id}
                           onSave={() => handleSaveReference(ref.reference_id)}
                           onOpen={() => handleOpenReference(ref.reference_url)}
@@ -630,7 +634,7 @@ export default function WorkspaceClient({
             </div>
           ) : (
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-              {filteredReferences.map((ref: ReferenceData) => (
+              {filteredReferences.map((ref) => (
                 <ReferenceCard
                   key={ref.reference_id}
                   id={ref.reference_id}
@@ -641,7 +645,7 @@ export default function WorkspaceClient({
                   tags={ref.tags?.map(t => t.tag_name) || []}
                   type={getCardType(ref.reference_type)}
                   colorPalette={ref.reference_metadata?.colorPalette}
-                  folders={folders}
+                  folders={typedFolders}
                   currentFolderId={ref.folder_id}
                   onSave={() => handleSaveReference(ref.reference_id)}
                   onOpen={() => handleOpenReference(ref.reference_url)}
@@ -695,7 +699,7 @@ export default function WorkspaceClient({
         </button>
       )}
 
-      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
+      {typedMembers.some((m) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsActivityLogOpen(true)}
           className={`fixed bottom-8 ${
@@ -709,7 +713,7 @@ export default function WorkspaceClient({
         </button>
       )}
 
-      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
+      {typedMembers.some((m) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsChatOpen(true)}
           className={`fixed bottom-8 ${
@@ -726,11 +730,11 @@ export default function WorkspaceClient({
         isOpen={isActivityLogOpen}
         onClose={() => setIsActivityLogOpen(false)}
         workspaceId={workspaceId || ""}
-        references={references}
-        members={members}
+        references={typedReferences}
+        members={typedMembers}
       />
 
-      {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && workspaceId && (
+      {typedMembers.some((m) => m.profile_id === user?.id) && workspaceId && (
         <WorkspaceChat
           workspaceId={workspaceId}
           currentUserId={user?.id}

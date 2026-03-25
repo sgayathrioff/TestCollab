@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Infinity, Search, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -97,8 +98,11 @@ export default function DashboardLayout({
                 className="w-10 h-10 rounded-full overflow-hidden border-2 border-white ring-2 ring-stone-100 cursor-pointer hover:ring-lime-300 transition-all"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               >
-                <img 
+                <Image
                   src={user?.avatar_url || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?auto=format&fit=crop&q=80&w=100"} 
+                  width={40}
+                  height={40}
+                  loading="lazy"
                   className="w-full h-full object-cover"
                   alt="User"
                 />
@@ -160,7 +164,7 @@ export default function DashboardLayout({
       </div>
 
       {/* Main Content */}
-      <main className="max-w-[1400px] mx-auto px-6 pt-40">
+      <main className="max-w-350 mx-auto px-6 pt-40">
         {children}
       </main>
     </div>

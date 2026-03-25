@@ -2,6 +2,7 @@
 
 import { Heart, Bookmark } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface WorkspaceCardProps {
   id: string;
@@ -44,10 +45,12 @@ export function WorkspaceCard({
     <Link href={`/workspace/${id}`}>
       <div className="bg-white p-3 pb-5 rounded-[40px] hover-lift border border-stone-100 group cursor-pointer">
         {/* Cover Image */}
-        <div className="aspect-[16/10] rounded-[32px] overflow-hidden relative mb-4 bg-stone-100">
-          <img
+        <div className="aspect-16/10 rounded-4xl overflow-hidden relative mb-4 bg-stone-100">
+          <Image
             src={coverImage}
             alt={title}
+            fill
+            loading="lazy"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
           />
           {/* Category Badge */}
@@ -83,9 +86,12 @@ export function WorkspaceCard({
                   onAuthorClick?.();
                 }}
               >
-                <img
+                <Image
                   src={author.avatar}
                   alt={author.name}
+                  width={32}
+                  height={32}
+                  loading="lazy"
                   className="w-8 h-8 rounded-full border border-stone-200 group-hover/author:ring-2 ring-lime-400 transition-all"
                 />
                 <p className="text-sm font-bold text-stone-900 leading-none group-hover/author:text-lime-700 transition-colors">

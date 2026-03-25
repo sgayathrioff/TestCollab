@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { User, Camera, Loader2, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -219,9 +220,12 @@ export default function ProfileSetupPage() {
               <div className="relative">
                 <div className="w-24 h-24 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center">
                   {avatarPreview || existingAvatar ? (
-                    <img
+                    <Image
                       src={avatarPreview || existingAvatar}
                       alt="Avatar"
+                      width={96}
+                      height={96}
+                      loading="lazy"
                       className="w-full h-full object-cover"
                     />
                   ) : (

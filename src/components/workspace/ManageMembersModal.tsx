@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
+import Image from 'next/image';
 import Fuse from 'fuse.js';
 import { supabase } from '@/lib/supabase';
 import { WorkspaceMember } from '@/types';
@@ -150,7 +151,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
       />
 
       {/* Modal Container */}
-      <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl relative z-10 flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 overflow-hidden">
+      <div className="bg-white w-full max-w-2xl rounded-4xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 overflow-hidden">
         
         {/* Header */}
         <div className="px-8 py-6 border-b border-stone-100 flex items-center justify-between bg-white sticky top-0 z-20">
@@ -236,7 +237,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
                   <div className="w-6 h-6 border-2 border-stone-200 border-t-stone-900 rounded-full animate-spin" />
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                <div className="space-y-2 max-h-75 overflow-y-auto custom-scrollbar">
                   {filteredProfiles.length > 0 ? (
                     filteredProfiles.map((profile) => (
                       <div
@@ -246,7 +247,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-stone-100 overflow-hidden">
                             {profile.profile_avatar_url ? (
-                              <img src={profile.profile_avatar_url} alt={profile.display_name} className="w-full h-full object-cover" />
+                              <Image src={profile.profile_avatar_url} alt={profile.display_name} width={40} height={40} loading="lazy" className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-stone-400 font-bold">
                                 {profile.display_name?.[0]?.toUpperCase() || '?'}
@@ -291,7 +292,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
 
           {/* Invite by Email Section */}
           {canManageMembers && activeTab === 'email' && (
-            <div className="bg-stone-50 p-1.5 rounded-[24px]">
+            <div className="bg-stone-50 p-1.5 rounded-3xl">
               <form onSubmit={handleInviteSubmit} className="flex gap-2">
                 <div className="relative flex-1">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
@@ -356,14 +357,14 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
                 return (
                   <div 
                     key={member.profile_id} 
-                    className="group flex items-center justify-between p-4 rounded-[24px] border border-stone-100 hover:border-stone-200 hover:shadow-lg hover:shadow-stone-100/50 transition-all bg-white"
+                    className="group flex items-center justify-between p-4 rounded-3xl border border-stone-100 hover:border-stone-200 hover:shadow-lg hover:shadow-stone-100/50 transition-all bg-white"
                   >
                     <div className="flex items-center gap-4">
                       {/* Avatar */}
                       <div className="relative">
                         <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
                            {member.profile?.profile_avatar_url ? (
-                               <img src={member.profile.profile_avatar_url} alt={member.profile.display_name} className="w-full h-full object-cover" />
+                             <Image src={member.profile.profile_avatar_url} alt={member.profile.display_name} width={48} height={48} loading="lazy" className="w-full h-full object-cover" />
                            ) : (
                                <span className="text-lg font-bold text-stone-400">
                                    {member.profile?.display_name?.[0]?.toUpperCase() || '?'}

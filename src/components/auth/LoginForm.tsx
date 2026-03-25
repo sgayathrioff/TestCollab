@@ -129,9 +129,9 @@ export function LoginForm() {
       </form>
 
       <div className="relative flex items-center py-8">
-        <div className="flex-grow border-t border-stone-200"></div>
-        <span className="flex-shrink-0 mx-4 text-stone-400 text-xs font-bold uppercase">Or continue with</span>
-        <div className="flex-grow border-t border-stone-200"></div>
+        <div className="grow border-t border-stone-200"></div>
+        <span className="shrink-0 mx-4 text-stone-400 text-xs font-bold uppercase">Or continue with</span>
+        <div className="grow border-t border-stone-200"></div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-8">

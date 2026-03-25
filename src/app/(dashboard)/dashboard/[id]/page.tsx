@@ -15,39 +15,52 @@ export default async function UserDashboardPage({ params }: { params: Promise<{ 
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          } catch {}
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
         },
       },
     }
   );
 
-  const [{ data: memberWorkspaceData }, { data: activityLogs }] = await Promise.all([
+  const [{ data: memberRows }, { data: ownedWorkspaces }] = await Promise.all([
     supabase
       .from("workspace_members")
       .select("workspace_id, workspaces(*)")
       .eq("profile_id", userId)
       .limit(50),
     supabase
-      .from("activity_logs")
-      .select("activity_id, workspace_id, actor_profile_id, activity_type, activity_payload, activity_created_at, profiles(display_name, profile_avatar_url), workspaces!inner(workspace_id, workspace_members!inner(profile_id))")
-      .eq("workspaces.workspace_members.profile_id", userId)
-      .order("activity_created_at", { ascending: false })
-      .limit(15),
+      .from("workspaces")
+      .select("*")
+      .eq("workspace_owner_id", userId)
+      .order("workspace_created_at", { ascending: false })
+      .limit(50),
   ]);
 
-  const workspaces = (memberWorkspaceData || [])
+  const memberWorkspaces = (memberRows || [])
     .map((row: any) => row.workspaces)
-    .filter(Boolean);
+    .filter(Boolean)
+    .flat();
+
+  const allWorkspaces = [...(ownedWorkspaces || []), ...(memberWorkspaces || [])];
+  const uniqueWorkspaces = Array.from(
+    new Map(allWorkspaces.map((w: any) => [w.workspace_id, w])).values()
+  );
+
+  const workspaceIds = uniqueWorkspaces.map((w: any) => w.workspace_id);
+
+  const { data: activityLogs } = workspaceIds.length
+    ? await supabase
+        .from("activity_logs")
+        .select("*, profiles(display_name, profile_avatar_url)")
+        .in("workspace_id", workspaceIds)
+        .order("activity_created_at", { ascending: false })
+        .limit(15)
+    : { data: [] as any[] };
 
   return (
     <DashboardClient
-      userId={userId}
-      initialWorkspaces={workspaces}
+      initialWorkspaces={uniqueWorkspaces}
       initialActivityLogs={activityLogs || []}
+      userId={userId}
     />
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 import { X, MessageCircle, Users, RefreshCw, WifiOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { MessageList } from "./MessageList";
@@ -485,12 +486,15 @@ export function WorkspaceChat({
                 key={member.profile_id}
                 className="flex items-center gap-3 p-3 rounded-2xl hover:bg-stone-50 transition-colors"
               >
-                <img
+                <Image
                   src={
                     member.profile_avatar_url ||
                     `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.profile_id}`
                   }
                   alt={member.display_name}
+                  width={40}
+                  height={40}
+                  loading="lazy"
                   className="w-10 h-10 rounded-full"
                 />
                 <div className="flex-1">

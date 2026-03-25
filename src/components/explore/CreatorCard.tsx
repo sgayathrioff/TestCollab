@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useFollow } from "@/hooks/useFollow";
 
@@ -50,7 +51,7 @@ export function CreatorCard({
         className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-stone-50 cursor-pointer hover:ring-2 ring-lime-400 transition-all"
         onClick={handleProfileClick}
       >
-        <img src={avatar} alt={name} className="w-full h-full object-cover" />
+        <Image src={avatar} alt={name} width={80} height={80} loading="lazy" className="w-full h-full object-cover" />
       </div>
 
       {/* Name */}

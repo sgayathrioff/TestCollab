@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -304,9 +305,11 @@ export default function ProfilePage({
         <div className="h-48 md:h-64 w-full rounded-[40px] bg-gradient-to-r from-lime-200 via-emerald-200 to-teal-200 relative overflow-hidden">
           <div className="absolute inset-0 bg-white/20 backdrop-blur-[2px]"></div>
           {profile.cover_url && (
-            <img
+            <Image
               src={profile.cover_url}
               alt="Cover"
+              fill
+              priority
               className="w-full h-full object-cover"
             />
           )}
@@ -320,9 +323,12 @@ export default function ProfilePage({
             <div className="flex flex-col md:flex-row md:items-end gap-6">
               {/* Avatar */}
               <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-8 border-white bg-white overflow-hidden shadow-lg relative z-10">
-                <img
+                <Image
                   src={profile.avatar_url}
                   alt={profile.display_name}
+                  width={160}
+                  height={160}
+                  loading="lazy"
                   className="w-full h-full object-cover"
                 />
               </div>

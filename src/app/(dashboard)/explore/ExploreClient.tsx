@@ -36,65 +36,6 @@ interface CreatorResult {
   followers_count: number;
 }
 
-interface TrendingWorkspace {
-  id: string;
-  title: string;
-  description: string;
-  coverImage: string;
-  category: string;
-  categoryEmoji: string;
-  likes: number;
-  isLiked: boolean;
-  author: {
-    id: string;
-    name: string;
-    avatar: string;
-  };
-}
-
-interface FeaturedCreator {
-  id: string;
-  name: string;
-  username: string;
-  role: string;
-  avatar: string;
-  spacesCount: number;
-  followersCount: number;
-  isFollowing: boolean;
-}
-
-interface ExploreClientProps {
-  initialPublicWorkspaces: Array<{
-    workspace_id: string;
-    workspace_title: string;
-    workspace_description: string;
-    workspace_visibility: string;
-    workspace_created_at: string;
-    workspace_owner_id?: string;
-  }>;
-  initialProfiles: Array<{
-    profile_id: string;
-    display_name: string;
-    profile_avatar_url: string;
-    profile_skills?: string[];
-  }>;
-}
-
-const getCategoryEmoji = (category: string | null) => {
-  const emojiMap: Record<string, string> = {
-    Design: "🎨",
-    Code: "💻",
-    Audio: "🎧",
-    Branding: "✨",
-    Mobile: "📱",
-    Video: "🎬",
-    Writing: "📝",
-    Research: "🔬",
-    Marketing: "📈",
-  };
-  return emojiMap[category || ""] || "📁";
-};
-
 const placeholderImages = [
   "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800",
   "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800",
@@ -105,39 +46,44 @@ const placeholderImages = [
 
 const defaultAvatar = "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100";
 
-export default function ExploreClient({ initialPublicWorkspaces, initialProfiles }: ExploreClientProps) {
+export default function ExploreClient({
+  initialWorkspaces,
+  initialProfiles,
+}: {
+  initialWorkspaces: any[];
+  initialProfiles: any[];
+}) {
   const router = useRouter();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [searchLoading, setSearchLoading] = useState(false);
-  const [initialLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<{
     workspaces: WorkspaceResult[];
     creators: CreatorResult[];
   }>({ workspaces: [], creators: [] });
   const [hasSearched, setHasSearched] = useState(false);
 
-  const [trendingWorkspaces] = useState<TrendingWorkspace[]>(
-    (initialPublicWorkspaces || []).slice(0, 6).map((ws, index) => ({
+  const [trendingWorkspaces] = useState<any[]>(
+    (initialWorkspaces || []).map((ws, index) => ({
       id: ws.workspace_id,
       title: ws.workspace_title || "Untitled Workspace",
       description: ws.workspace_description || "No description available",
       coverImage: placeholderImages[index % placeholderImages.length],
       category: "General",
-      categoryEmoji: getCategoryEmoji("General"),
+      categoryEmoji: "📁",
       likes: 0,
       isLiked: false,
       author: {
-        id: ws.workspace_owner_id || "",
-        name: "Unknown User",
-        avatar: defaultAvatar,
+        id: ws.workspace_owner_id || ws.profile_id,
+        name: ws.display_name || "Unknown User",
+        avatar: ws.profile_avatar_url || defaultAvatar,
       },
     }))
   );
-
-  const [featuredCreators] = useState<FeaturedCreator[]>(
-    (initialProfiles || []).slice(0, 8).map((profile) => ({
+  const [featuredCreators] = useState<any[]>(
+    (initialProfiles || []).map((profile) => ({
       id: profile.profile_id,
       name: profile.display_name || "Anonymous User",
       username: profile.display_name?.toLowerCase().replace(/\s+/g, '') || profile.profile_id.slice(0, 8),
@@ -280,8 +226,7 @@ export default function ExploreClient({ initialPublicWorkspaces, initialProfiles
           followers_count: 0,
         })) || [],
       });
-    } catch (err) {
-      console.error("Error fetching search results:", err);
+    } catch {
     } finally {
       setSearchLoading(false);
     }
@@ -347,32 +292,6 @@ export default function ExploreClient({ initialPublicWorkspaces, initialProfiles
                           profile && handleAuthorClick(profile.profile_id)
                         }
                       />
-                      {workspace.matchedBy === 'tags' && (
-                        <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-medium">
-                          Found by tags
-                        </div>
-                      )}
-                      {workspace.matchedBy === 'both' && (
-                        <div className="absolute top-4 left-4 bg-lime-100 text-lime-700 px-2 py-1 rounded-full text-xs font-medium">
-                          Name + tags match
-                        </div>
-                      )}
-                      {workspace.matchedTags && workspace.matchedTags.length > 0 && (
-                        <div className="absolute bottom-4 left-4 right-4">
-                          <div className="flex flex-wrap gap-1">
-                            {workspace.matchedTags.slice(0, 3).map((tag, tagIndex) => (
-                              <span key={tagIndex} className="bg-white/90 text-stone-600 px-2 py-0.5 rounded-full text-xs font-medium shadow-sm">
-                                {tag}
-                              </span>
-                            ))}
-                            {workspace.matchedTags.length > 3 && (
-                              <span className="bg-white/90 text-stone-400 px-2 py-0.5 rounded-full text-xs">
-                                +{workspace.matchedTags.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -431,7 +350,7 @@ export default function ExploreClient({ initialPublicWorkspaces, initialProfiles
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-white p-3 pb-5 rounded-[40px] border border-stone-100 animate-pulse">
-                  <div className="aspect-[16/10] rounded-[32px] bg-stone-200 mb-4"></div>
+                  <div className="aspect-16/10 rounded-4xl bg-stone-200 mb-4"></div>
                   <div className="px-4">
                     <div className="h-6 bg-stone-200 rounded mb-2 w-3/4"></div>
                     <div className="h-4 bg-stone-200 rounded mb-4 w-1/2"></div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import NextImage from "next/image";
 import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, Image, Tag, FolderOpen } from "lucide-react";
 import type { WorkspaceFolder } from "@/types";
 import { supabase } from "@/lib/supabase";
@@ -540,7 +541,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
                 
                 {selectedFile ? (
                   previewUrl ? (
-                    <img src={previewUrl} alt="Preview" className="h-full w-full object-contain" />
+                    <NextImage src={previewUrl} alt="Preview" fill loading="lazy" className="h-full w-full object-contain" />
                   ) : (
                     <div className="text-center">
                       <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 ${TYPE_COLORS[fileType]}`}>

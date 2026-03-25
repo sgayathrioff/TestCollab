@@ -1,36 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
 import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, FolderPlus } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
-interface DashboardClientProps {
-  userId: string;
+export default function DashboardClient({
+  initialWorkspaces,
+  initialActivityLogs,
+  userId,
+}: {
   initialWorkspaces: any[];
   initialActivityLogs: any[];
-}
-
-export default function DashboardClient({ userId, initialWorkspaces }: DashboardClientProps) {
+  userId: string;
+}) {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>(initialWorkspaces || []);
-  const [workspacesLoading, setWorkspacesLoading] = useState(false);
 
   const date = new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
 
-  useEffect(() => {
-    if (authLoading || !userId) return;
-    if (user && user.id !== userId) {
-      router.push("/");
-    }
-  }, [user, userId, authLoading, router]);
+  if (!authLoading && user && user.id !== userId) {
+    router.push("/");
+  }
 
-  if (authLoading || !userId || workspacesLoading) {
+  if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-900 rounded-full animate-spin"></div>
@@ -79,7 +77,7 @@ export default function DashboardClient({ userId, initialWorkspaces }: Dashboard
         </div>
 
         <div className="lg:col-span-5 grid grid-cols-2 gap-4">
-          <div className="bg-white p-8 rounded-[40px] flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] min-h-[280px]">
+          <div className="bg-white p-8 rounded-[40px] flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] min-h-70">
             <div className="flex justify-between items-start">
               <span className="text-stone-400 font-medium text-lg">Workspaces</span>
               <div className="w-10 h-10 rounded-full bg-[#d9f99d] flex items-center justify-center text-[#365314]">
@@ -97,13 +95,13 @@ export default function DashboardClient({ userId, initialWorkspaces }: Dashboard
           </div>
 
           <div className="flex flex-col gap-4">
-            <div className="bg-[#d9f99d] p-6 rounded-[32px] flex-1 hover:scale-[1.02] transition-transform duration-300 flex flex-col justify-center relative overflow-hidden group">
+            <div className="bg-[#d9f99d] p-6 rounded-4xl flex-1 hover:scale-[1.02] transition-transform duration-300 flex flex-col justify-center relative overflow-hidden group">
               <FileText className="absolute -right-4 -bottom-4 w-24 h-24 text-[#bef264] rotate-12 group-hover:scale-110 transition-transform" />
               <h3 className="text-4xl font-semibold text-[#1a2e05] relative z-10">1,248</h3>
               <p className="text-[#365314] font-medium relative z-10">References</p>
             </div>
 
-            <div className="bg-[#1c1917] p-6 rounded-[32px] flex-1 hover:scale-[1.02] transition-transform duration-300 flex items-center justify-between text-white">
+            <div className="bg-[#1c1917] p-6 rounded-4xl flex-1 hover:scale-[1.02] transition-transform duration-300 flex items-center justify-between text-white">
               <div>
                 <p className="text-stone-400 text-sm mb-1">Storage</p>
                 <p className="text-2xl font-medium">75%</p>
@@ -130,14 +128,13 @@ export default function DashboardClient({ userId, initialWorkspaces }: Dashboard
             href={`/workspace/${workspace.workspace_id}`}
             className="group bg-white p-3 pb-6 rounded-[40px] hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 cursor-pointer"
           >
-            <div className="aspect-[4/3] rounded-[32px] overflow-hidden relative mb-5">
+            <div className="aspect-4/3 rounded-4xl overflow-hidden relative mb-5">
               <Image
                 src={workspace.workspace_cover_image || placeholderImages[index % placeholderImages.length]}
                 fill
+                loading="lazy"
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                 alt={workspace.workspace_title}
-                priority={index === 0}
-                loading={index === 0 ? undefined : "lazy"}
               />
               <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
               <button className="absolute top-4 right-4 w-10 h-10 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-white hover:text-black">
@@ -165,12 +162,11 @@ export default function DashboardClient({ userId, initialWorkspaces }: Dashboard
           </Link>
           );
         })}
-
       </div>
 
       {workspaces.length === 0 && (
         <div className="mt-12 bg-white rounded-[48px] p-12 text-center border border-dashed border-stone-200 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-lime-300 via-green-400 to-emerald-500"></div>
+          <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-lime-300 via-green-400 to-emerald-500"></div>
 
           <div className="inline-flex justify-center items-center w-20 h-20 bg-stone-50 rounded-full mb-6 text-stone-300">
             <FolderPlus className="w-10 h-10" />
@@ -188,7 +184,7 @@ export default function DashboardClient({ userId, initialWorkspaces }: Dashboard
 
       {workspaces.length > 0 && (
         <div className="mt-12 bg-white rounded-[48px] p-12 text-center border border-dashed border-stone-200 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-lime-300 via-green-400 to-emerald-500"></div>
+          <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-lime-300 via-green-400 to-emerald-500"></div>
 
           <div className="inline-flex justify-center items-center w-20 h-20 bg-stone-50 rounded-full mb-6 text-stone-300">
             <FolderPlus className="w-10 h-10" />

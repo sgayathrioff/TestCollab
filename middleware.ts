@@ -27,9 +27,8 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet: CookieToSet[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value);
             response.cookies.set(name, value, options);
           });
         },
@@ -54,19 +53,23 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute =
     pathname === "/" ||
     pathname.startsWith("/explore") ||
-    pathname.startsWith("/auth/confirm") ||
-    pathname.startsWith("/auth/callback");
-
-  if (isProtectedRoute && !user) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  if (isAuthRoute && user) {
-    return NextResponse.redirect(new URL(`/dashboard/${user.id}`, request.url));
-  }
+    pathname === "/auth/confirm" ||
+    pathname === "/auth/callback";
 
   if (isPublicRoute) {
     return response;
+  }
+
+  if (isProtectedRoute && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  if (isAuthRoute && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/dashboard/${user.id}`;
+    return NextResponse.redirect(url);
   }
 
   return response;
@@ -74,6 +77,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|bmp|tiff)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|bmp|tif|tiff)$).*)",
   ],
 };

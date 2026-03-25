@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Image from "next/image";
 import { X, Clock, FileText, UserPlus, MessageSquare, Activity } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { ReferenceData, WorkspaceMember } from "@/types";
@@ -202,15 +203,18 @@ export function ActivityLogDrawer({
           ) : (
             <div className="relative pl-4 pr-2 py-4 space-y-8">
                 {/* Timeline line */}
-                <div className="absolute left-[27px] top-6 bottom-6 w-px bg-stone-100" />
+              <div className="absolute left-6.75 top-6 bottom-6 w-px bg-stone-100" />
 
                 {activities.map((item) => (
                   <div key={item.id} className="relative flex gap-4 group">
                     <div className="relative z-10 shrink-0">
                       <div className="w-6 h-6 rounded-full ring-4 ring-white relative">
-                         <img 
+                         <Image
                            src={item.actor.avatar || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100"} 
                            alt={item.actor.name}
+                           width={24}
+                           height={24}
+                           loading="lazy"
                            className="w-full h-full rounded-full object-cover bg-stone-100"
                          />
                          <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center bg-white">

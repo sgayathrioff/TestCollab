@@ -3,7 +3,7 @@ import { Outfit } from "next/font/google"; // Import Outfit font
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 
-const outfit = Outfit({ subsets: ["latin"] }); // Configure it
+const outfit = Outfit({ subsets: ["latin"], display: "swap" }); // Configure it
 
 export const metadata: Metadata = {
   title: "Collabio - Organize Your Flow",

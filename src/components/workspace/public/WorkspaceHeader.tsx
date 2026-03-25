@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Eye, Heart, Share2, Copy, UserPlus, Tag, Settings } from "lucide-react";
 
 interface WorkspaceHeaderProps {
@@ -81,9 +82,11 @@ export function WorkspaceHeader({
       <header className="mb-10 float-in delay-1 relative">
         {/* Cover Image */}
         <div className="w-full h-62.5 md:h-87.5 rounded-[48px] overflow-hidden relative bg-stone-200">
-          <img
+          <Image
             src={coverImage}
             alt={title}
+            fill
+            priority
             className="w-full h-full object-cover opacity-90"
           />
           <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent"></div>
@@ -116,9 +119,12 @@ export function WorkspaceHeader({
 
               {/* Author */}
               <div className="flex items-center gap-3">
-                <img
+                <Image
                   src={author.avatar}
                   alt={author.name}
+                  width={48}
+                  height={48}
+                  loading="lazy"
                   className="w-12 h-12 rounded-full border-2 border-stone-100 cursor-pointer hover:ring-2 ring-lime-400 transition-all"
                   onClick={() => router.push(`/profile/${author.id}`)}
                 />

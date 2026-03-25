@@ -172,9 +172,48 @@ function fallbackPreviewByType(type: ReferenceType) {
   return "/file.svg";
 }
 
+function buildLinkFallbackResponse(params: {
+  url: string;
+  title?: string | null;
+  contentType?: string;
+  metadata?: Record<string, any>;
+  note?: string;
+}) {
+  const { url, title, contentType = "text/html", metadata = {}, note } = params;
+  const fallbackHost = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "Imported Link";
+    }
+  })();
+
+  return NextResponse.json(
+    {
+      success: true,
+      mode: "platform",
+      sourceUrl: url,
+      publicUrl: null,
+      fileName: title || fallbackHost,
+      type: "link",
+      actualType: "link",
+      contentType,
+      title: title || null,
+      metadata: {
+        ...metadata,
+        source_url: url,
+        source: fallbackHost,
+        thumbnail: fallbackPreviewByType("link"),
+        import_note: note || "Saved as link",
+      },
+    },
+    { status: 200 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { url, type } = await request.json() as { url: string; type: ReferenceType };
+    const { url, type, platform } = await request.json() as { url: string; type: ReferenceType; platform?: string };
 
     if (!url) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -207,6 +246,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const detectedPlatform = (platform || "web").toLowerCase();
+    const knownPlatforms = new Set([
+      "youtube",
+      "vimeo",
+      "instagram",
+      "tiktok",
+      "soundcloud",
+      "spotify",
+      "x",
+      "pinterest",
+    ]);
+    const isKnownPlatform = knownPlatforms.has(detectedPlatform);
+
     // Fetch the URL resource
     const response = await fetch(url, {
       headers: {
@@ -215,17 +267,23 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      return NextResponse.json(
-        { error: `Failed to fetch file: ${response.statusText}` },
-        { status: 400 }
-      );
+      return buildLinkFallbackResponse({
+        url,
+        contentType: "text/html",
+        metadata: {
+          platform: detectedPlatform,
+        },
+        note: `Failed to download media (${response.status}); saved as link`,
+      });
     }
 
     const contentType = response.headers.get("content-type") || "application/octet-stream";
     const inferredType = inferTypeFromContentType(contentType, type);
 
     let blob: Blob;
-    let metadata: Record<string, any> = {};
+    let metadata: Record<string, any> = {
+      platform: platform || null,
+    };
     let extractedTitle: string | null = null;
     let extractedThumbnail: string | null = null;
     let mode: "direct" | "platform" = "direct";
@@ -239,6 +297,34 @@ export async function POST(request: NextRequest) {
       const meta = extractMeta(html);
       extractedTitle = meta.title;
       metadata.description = meta.description;
+
+      if (!isKnownPlatform) {
+        return buildLinkFallbackResponse({
+          url,
+          title: extractedTitle,
+          contentType,
+          metadata: {
+            ...metadata,
+            platform: detectedPlatform,
+          },
+          note: "Platform could not be identified; saved as link",
+        });
+      }
+
+      const previewCandidate = meta.image || meta.linkImage;
+      if (previewCandidate) {
+        try {
+          const absolutePreviewUrl = toAbsoluteUrl(previewCandidate, url);
+          const uploadedPreview = await uploadPreviewFromUrl({
+            supabase: storageClient,
+            imageUrl: absolutePreviewUrl,
+            baseType: inferredType,
+          });
+          extractedThumbnail = uploadedPreview || absolutePreviewUrl;
+        } catch {
+          extractedThumbnail = extractedThumbnail || null;
+        }
+      }
       const urlCandidates = extractMediaCandidatesFromUrl(url);
       const htmlCandidates = extractMediaCandidatesFromHtml(html);
       const candidateMediaUrls = [
@@ -295,35 +381,17 @@ export async function POST(request: NextRequest) {
       }
 
       if (!mediaDownloaded) {
-        const fallbackHost = (() => {
-          try {
-            return new URL(url).hostname;
-          } catch {
-            return "Imported Link";
-          }
-        })();
-
-        return NextResponse.json(
-          {
-            success: true,
-            mode: "platform",
-            sourceUrl: url,
-            publicUrl: null,
-            fileName: extractedTitle || fallbackHost,
-            type: "link",
-            actualType: "link",
-            contentType,
-            title: extractedTitle || null,
-            metadata: {
-              ...metadata,
-              source_url: url,
-              source: fallbackHost,
-              thumbnail: fallbackPreviewByType("link"),
-              import_note: "No downloadable media found; saved as link",
-            },
+        return buildLinkFallbackResponse({
+          url,
+          title: extractedTitle,
+          contentType,
+          metadata: {
+            ...metadata,
+            platform: detectedPlatform,
+            thumbnail: extractedThumbnail || undefined,
           },
-          { status: 200 }
-        );
+          note: "No downloadable media found; saved as link",
+        });
       }
     } else {
       blob = await response.blob();

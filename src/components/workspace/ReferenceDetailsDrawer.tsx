@@ -331,9 +331,34 @@ export function ReferenceDetailsDrawer({
   const referenceType = reference.reference_type ?? "document";
   const referenceUrl = reference.reference_url ?? "";
   const referenceTags = reference.tags ?? [];
+
+  const isLikelyImageUrl = (url?: string | null) => {
+    if (!url) return false;
+    return /(\.png|\.jpe?g|\.gif|\.webp|\.avif|\.svg)(\?.*)?$/i.test(url) ||
+      url.includes("/storage/v1/object/public/");
+  };
+
+  const isSafePreviewUrl = (url?: string | null) => {
+    if (!url) return false;
+    if (url.startsWith("/")) return true;
+    const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseBase) return false;
+    return url.startsWith(`${supabaseBase}/storage/`);
+  };
+
+  const thumbnailCandidate = reference.reference_metadata?.thumbnail;
+  const metadataThumbnail =
+    isLikelyImageUrl(thumbnailCandidate) && isSafePreviewUrl(thumbnailCandidate)
+      ? thumbnailCandidate
+      : null;
+  const urlThumbnail =
+    isLikelyImageUrl(referenceUrl) && isSafePreviewUrl(referenceUrl)
+      ? referenceUrl
+      : null;
   const referenceThumbnail =
-    reference.reference_metadata?.thumbnail ||
-    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500";
+    metadataThumbnail ||
+    urlThumbnail ||
+    (referenceType === "image" ? "/window.svg" : referenceType === "video" ? "/next.svg" : "/file.svg");
 
   return (
     <div className="fixed right-0 top-0 h-full w-full z-60 flex justify-end">

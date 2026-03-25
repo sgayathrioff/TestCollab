@@ -97,8 +97,8 @@ export function useWorkspace(workspaceId: string) {
   };
 
   // Get permissions for current user
-  // Simplified: owner and member can both edit, only owner can manage members
-  // Public workspaces allow anyone to view
+  // owner: full access, member: edit access, viewer: read-only
+  // Public workspaces allow non-members to view
   const getPermissions = (): MemberPermissions => {
     const role = getCurrentUserRole();
     const isPublic = workspace?.workspace_visibility === 'public';
@@ -118,6 +118,16 @@ export function useWorkspace(workspaceId: string) {
       return {
         canView: true,
         canEdit: true,
+        canManageMembers: false,
+        canDeleteWorkspace: false,
+      };
+    }
+
+    // Viewer: read-only
+    if (role === 'viewer') {
+      return {
+        canView: true,
+        canEdit: false,
         canManageMembers: false,
         canDeleteWorkspace: false,
       };
@@ -272,10 +282,16 @@ export function useWorkspace(workspaceId: string) {
       const allMembers = [ownerMember, ...membersWithProfiles.filter(m => m.profile_id !== workspaceData.workspace_owner_id)];
       setMembers(allMembers);
 
-      const role = user
-        ? (workspaceData.workspace_owner_id === user.id ? 'owner' : allMembers.some(m => m.profile_id === user.id) ? 'viewer' : null)
-        : null;
-      setUserRole(role as 'owner' | 'editor' | 'viewer' | null);
+      const role = (() => {
+        if (!user) return null;
+        if (workspaceData.workspace_owner_id === user.id) return 'owner' as const;
+        const currentMember = allMembers.find((m) => m.profile_id === user.id);
+        if (!currentMember) return null;
+        if (currentMember.member_role === 'member') return 'member' as const;
+        if (currentMember.member_role === 'viewer') return 'viewer' as const;
+        return null;
+      })();
+      setUserRole(role);
 
     } catch (err: any) {
       console.error('Error fetching workspace:', err);
@@ -584,6 +600,40 @@ export function useWorkspace(workspaceId: string) {
     }
   }, [user, workspace, members, workspaceId, getPermissions, setMembers]);
 
+  const updateMemberRole = useCallback(async (profileId: string, role: 'member' | 'viewer'): Promise<void> => {
+    if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
+
+    const permissions = getPermissions();
+    if (!permissions.canManageMembers) {
+      throw new Error('Only workspace owners can manage member roles');
+    }
+
+    if (profileId === workspace.workspace_owner_id) {
+      throw new Error('Owner role cannot be changed');
+    }
+
+    const previousMembers = [...members];
+    setMembers(
+      members.map((member) =>
+        member.profile_id === profileId ? { ...member, member_role: role } : member
+      )
+    );
+
+    try {
+      const { error } = await supabase
+        .from('workspace_members')
+        .update({ member_role: role })
+        .eq('workspace_id', workspaceId)
+        .eq('profile_id', profileId);
+
+      if (error) throw error;
+    } catch (err: any) {
+      setMembers(previousMembers);
+      console.error('Error updating member role:', err);
+      throw err;
+    }
+  }, [user, workspace, members, workspaceId, getPermissions, setMembers]);
+
   // Invite member by email (always adds as 'member')
   const inviteMemberByEmail = useCallback(async (email: string): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
@@ -876,6 +926,7 @@ export function useWorkspace(workspaceId: string) {
     // Member management
     addMember,
     removeMember,
+    updateMemberRole,
     updateMemberCategory,
     inviteMemberByEmail,
     deleteWorkspace,

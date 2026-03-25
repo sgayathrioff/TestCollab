@@ -19,6 +19,7 @@ interface ManageMembersModalProps {
   canManageMembers: boolean;
   onInviteMember: (email: string) => Promise<void>;
   onRemoveMember: (profileId: string) => Promise<void>;
+  onUpdateRole?: (profileId: string, role: "member" | "viewer") => Promise<void>;
 }
 
 export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
@@ -30,6 +31,7 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
   canManageMembers,
   onInviteMember,
   onRemoveMember,
+  onUpdateRole,
 }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
@@ -399,12 +401,33 @@ export const ManageMembersModal: React.FC<ManageMembersModalProps> = ({
                     <div className="flex items-center gap-4">
                        <div className={cn(
                            "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border",
-                           isOwner 
-                            ? "bg-amber-50 text-amber-600 border-amber-100" 
+                           isOwner
+                          ? "bg-amber-50 text-amber-600 border-amber-100"
+                          : member.member_role === 'viewer'
+                            ? "bg-sky-50 text-sky-600 border-sky-100"
                             : "bg-stone-50 text-stone-500 border-stone-100"
-                       )}>
-                           {isOwner ? 'Owner' : 'Member'}
-                       </div>
+                         )}>
+                           {isOwner ? 'Owner' : member.member_role === 'viewer' ? 'Viewer' : 'Member'}
+                         </div>
+
+                       {canManageMembers && !isOwner && onUpdateRole && (
+                          <select
+                            value={member.member_role === 'viewer' ? 'viewer' : 'member'}
+                            onChange={async (e) => {
+                              try {
+                                await onUpdateRole(member.profile_id, e.target.value as 'member' | 'viewer');
+                                setSuccess(`${member.profile?.display_name || 'Member'} role updated`);
+                                setTimeout(() => setSuccess(null), 2500);
+                              } catch (err: any) {
+                                setError(err?.message || 'Failed to update member role');
+                              }
+                            }}
+                            className="text-xs border border-stone-200 rounded-lg px-2 py-1 bg-white text-stone-700"
+                          >
+                            <option value="member">Member</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                        )}
 
                        {canRemove && (
                            <button 

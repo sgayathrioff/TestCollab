@@ -1,19 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Image, PlayCircle, FileText, Mic, Link2, ChevronDown, ChevronRight, FolderInput, Activity } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Activity, ChevronDown } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
-import { useWorkspaceStore } from "@/lib/stores/workspaceStore";
-import { useReferencesStore } from "@/lib/stores/referencesStore";
+import { useToast } from "@/components/ui/Toast";
 import {
   ReferenceCard,
   WorkspaceHeader,
   WorkspaceSidebar,
 } from "@/components/workspace/public";
-import { useToast } from "@/components/ui/Toast";
 import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
 import { EditReferenceModal } from "@/components/workspace/EditReferenceModal";
 import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
@@ -23,6 +21,7 @@ import { ReferenceDetailsDrawer } from "@/components/workspace/ReferenceDetailsD
 import { ActivityLogDrawer } from "@/components/workspace/ActivityLogDrawer";
 import { WorkspaceChat } from "@/components/workspace/chat";
 import type { ReferenceData, WorkspaceMember, WorkspaceFolder, FolderFilter } from "@/types";
+import { supabase } from "@/lib/supabase";
 
 interface WorkspaceClientProps {
   workspaceId: string;
@@ -30,48 +29,27 @@ interface WorkspaceClientProps {
   initialReferences: ReferenceData[];
   initialMembers: WorkspaceMember[];
   initialFolders: any[];
-  initialUserRole: "owner" | "editor" | "viewer" | null;
+  initialUserRole: "owner" | "member" | "viewer" | null;
 }
 
-export default function WorkspaceClient({
-  workspaceId,
-  initialWorkspace,
-  initialReferences,
-  initialMembers,
-  initialFolders,
-  initialUserRole,
-}: WorkspaceClientProps) {
+const STORAGE_BUCKET = "Link-UpWorkpace";
+
+export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   const router = useRouter();
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
 
-  const { setWorkspace, setMembers, setFolders, setUserRole, reset } = useWorkspaceStore();
-  const { setReferences } = useReferencesStore();
-
-  useEffect(() => {
-    setWorkspace(initialWorkspace || null);
-    setMembers((initialMembers || []) as any);
-    setFolders((initialFolders || []) as any);
-    setUserRole(initialUserRole);
-    setReferences((initialReferences || []) as any);
-
-    return () => {
-      reset();
-      setReferences([]);
-    };
-  }, [initialWorkspace, initialMembers, initialFolders, initialUserRole, initialReferences, reset, setFolders, setMembers, setReferences, setUserRole, setWorkspace]);
-
   const {
-    workspace = null,
-    owner = null,
-    references = [],
-    members = [],
-    folders = [],
-    loading = false,
-    isOwner = false,
+    workspace,
+    owner,
+    references,
+    members,
+    folders,
+    loading,
     getPermissions,
     deleteReference,
     removeMember,
+    updateMemberRole,
     updateMemberCategory,
     inviteMemberByEmail,
     deleteWorkspace,
@@ -90,7 +68,7 @@ export default function WorkspaceClient({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list" | "compact">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [groupBy, setGroupBy] = useState<"type" | "folder" | "none">("type");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "alphabetical" | "reverse-alphabetical">("newest");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -105,15 +83,6 @@ export default function WorkspaceClient({
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [categoryMenuMemberId, setCategoryMenuMemberId] = useState<string | null>(null);
-  const [expandedTypeGroups, setExpandedTypeGroups] = useState<Record<string, boolean>>({
-    image: true,
-    video: true,
-    audio: true,
-    document: true,
-    link: true,
-  });
-
-  const [tags, setTags] = useState<string[]>([]);
 
   const permissions = getPermissions ? getPermissions() : {
     canView: false,
@@ -122,132 +91,13 @@ export default function WorkspaceClient({
     canDeleteWorkspace: false,
   };
 
-  useEffect(() => {
-    if (!typedReferences.length) {
-      setTags([]);
-      return;
-    }
+  const tags = useMemo(() => {
     const tagSet = new Set<string>();
     typedReferences.forEach((ref) => {
       (ref.tags || []).forEach((tag) => tagSet.add(tag.tag_name));
     });
-    setTags(Array.from(tagSet).slice(0, 8));
+    return Array.from(tagSet).slice(0, 12);
   }, [typedReferences]);
-
-  const filteredReferences = typedReferences.filter((ref) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ref.tags?.some((tag) =>
-        tag.tag_name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-    let matchesFilter = true;
-    if (activeFilter === null) {
-      matchesFilter = true;
-    } else if (activeFilter.type === "uncategorized") {
-      matchesFilter = !ref.folder_id;
-    } else if (activeFilter.type === "folder") {
-      matchesFilter = ref.folder_id === activeFilter.folderId;
-      if (matchesFilter && activeFilter.subType) {
-        matchesFilter = ref.reference_type === activeFilter.subType;
-      }
-    }
-
-    return matchesSearch && matchesFilter;
-  })
-  .sort((a, b) => {
-    switch (sortBy) {
-      case "newest":
-        return new Date(b.reference_created_at).getTime() - new Date(a.reference_created_at).getTime();
-      case "oldest":
-        return new Date(a.reference_created_at).getTime() - new Date(b.reference_created_at).getTime();
-      case "alphabetical":
-        return (a.reference_title || "").localeCompare(b.reference_title || "");
-      case "reverse-alphabetical":
-        return (b.reference_title || "").localeCompare(a.reference_title || "");
-      default:
-        return 0;
-    }
-  });
-
-  const getGroupingMeta = (key: string, mode: "type" | "folder") => {
-    if (mode === "type") {
-      const meta = {
-        image:    { label: "Images",    icon: <Image className="w-4 h-4" /> },
-        video:    { label: "Videos",    icon: <PlayCircle className="w-4 h-4" /> },
-        audio:    { label: "Audio",     icon: <Mic className="w-4 h-4" /> },
-        document: { label: "Documents", icon: <FileText className="w-4 h-4" /> },
-        link:     { label: "Links",     icon: <Link2 className="w-4 h-4" /> },
-      }[key];
-      return meta || { label: key, icon: <FileText className="w-4 h-4" /> };
-    }
-
-    if (key === "uncategorized") {
-      return { label: "Uncategorized", icon: <List className="w-4 h-4" /> };
-    }
-    const folder = typedFolders.find(f => f.folder_id === key);
-    return { label: folder?.folder_name || "Unknown Collection", icon: <FolderInput className="w-4 h-4" /> };
-  };
-
-  const groupedReferences = useMemo(() => {
-    if (groupBy === "none") return null;
-
-    if (groupBy === "type") {
-       const groups = filteredReferences.reduce((acc, ref) => {
-          const t = ref.reference_type || "document";
-          if (!acc[t]) acc[t] = [];
-          acc[t].push(ref);
-          return acc;
-        }, {} as Record<string, ReferenceData[]>);
-        return Object.entries(groups).sort((a, b) => {
-          const order = ["image", "video", "audio", "document", "link"];
-          return order.indexOf(a[0]) - order.indexOf(b[0]);
-        });
-    }
-
-    if (groupBy === "folder") {
-      const groups = filteredReferences.reduce((acc, ref) => {
-        const f = ref.folder_id || "uncategorized";
-        if (!acc[f]) acc[f] = [];
-        acc[f].push(ref);
-        return acc;
-      }, {} as Record<string, ReferenceData[]>);
-      return Object.entries(groups);
-    }
-
-    return null;
-  }, [groupBy, filteredReferences, typedFolders]);
-
-  const compactGroupedReferences = useMemo(() => {
-    if (groupBy === "folder") {
-        const groups = filteredReferences.reduce((acc, ref) => {
-            const f = ref.folder_id || "uncategorized";
-            if (!acc[f]) acc[f] = [];
-            acc[f].push(ref);
-            return acc;
-        }, {} as Record<string, ReferenceData[]>);
-        return Object.entries(groups);
-    }
-
-    const REFERENCE_TYPE_ORDER = ["image", "video", "audio", "document", "link"];
-    return REFERENCE_TYPE_ORDER
-        .map((type) => [type, filteredReferences.filter((ref) => (ref.reference_type || "document") === type)] as const)
-        .filter(([, refs]) => refs.length > 0);
-  }, [groupBy, filteredReferences]);
-
-  const toggleTypeGroup = (type: string) => {
-    setExpandedTypeGroups((prev) => ({
-      ...prev,
-      [type]: !prev[type],
-    }));
-  };
-
-  const getCardType = (refType?: string): "image" | "link" | "color" | "video" => {
-    if (refType === "image") return "image";
-    if (refType === "video") return "video";
-    return "link";
-  };
 
   const memberCategoryGroups = useMemo(() => {
     const grouped = typedMembers.reduce((acc, member) => {
@@ -274,6 +124,179 @@ export default function WorkspaceClient({
     ).sort((a, b) => a.localeCompare(b));
   }, [typedMembers]);
 
+  const filteredReferences = useMemo(() => {
+    return typedReferences
+      .filter((ref) => {
+        const matchesSearch =
+          searchQuery === "" ||
+          ref.reference_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          ref.tags?.some((tag) => tag.tag_name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        let matchesFilter = true;
+        if (activeFilter === null) {
+          matchesFilter = true;
+        } else if (activeFilter.type === "uncategorized") {
+          matchesFilter = !ref.folder_id;
+        } else if (activeFilter.type === "folder") {
+          matchesFilter = ref.folder_id === activeFilter.folderId;
+          if (matchesFilter && activeFilter.subType) {
+            matchesFilter = ref.reference_type === activeFilter.subType;
+          }
+        }
+
+        return matchesSearch && matchesFilter;
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "newest":
+            return new Date(b.reference_created_at).getTime() - new Date(a.reference_created_at).getTime();
+          case "oldest":
+            return new Date(a.reference_created_at).getTime() - new Date(b.reference_created_at).getTime();
+          case "alphabetical":
+            return (a.reference_title || "").localeCompare(b.reference_title || "");
+          case "reverse-alphabetical":
+            return (b.reference_title || "").localeCompare(a.reference_title || "");
+          default:
+            return 0;
+        }
+      });
+  }, [typedReferences, searchQuery, activeFilter, sortBy]);
+
+  const groupedReferences = useMemo(() => {
+    if (groupBy === "none") return [["All", filteredReferences] as [string, ReferenceData[]]];
+
+    if (groupBy === "type") {
+      const groups = filteredReferences.reduce((acc, ref) => {
+        const key = ref.reference_type || "document";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(ref);
+        return acc;
+      }, {} as Record<string, ReferenceData[]>);
+
+      const order = ["image", "video", "audio", "document", "link"];
+      return Object.entries(groups).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+    }
+
+    const groups = filteredReferences.reduce((acc, ref) => {
+      const key = ref.folder_id || "uncategorized";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(ref);
+      return acc;
+    }, {} as Record<string, ReferenceData[]>);
+
+    return Object.entries(groups);
+  }, [filteredReferences, groupBy]);
+
+  const resolveGroupLabel = (groupKey: string) => {
+    if (groupBy === "type") return groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
+    if (groupKey === "uncategorized") return "Uncategorized";
+    return typedFolders.find((f) => f.folder_id === groupKey)?.folder_name || "Collection";
+  };
+
+  const getCardType = (refType?: string): "image" | "link" | "color" | "video" => {
+    if (refType === "image") return "image";
+    if (refType === "video") return "video";
+    return "link";
+  };
+
+  const getReferenceSource = (ref: ReferenceData) => {
+    if (ref.reference_metadata?.source) return ref.reference_metadata.source;
+    if (ref.reference_metadata?.source_url) {
+      try {
+        return new URL(ref.reference_metadata.source_url).hostname;
+      } catch {
+        return "External";
+      }
+    }
+    try {
+      return new URL(ref.reference_url).hostname;
+    } catch {
+      return "Reference";
+    }
+  };
+
+  const isLikelyImageUrl = (url?: string | null) => {
+    if (!url) return false;
+    return /(\.png|\.jpe?g|\.gif|\.webp|\.avif|\.svg)(\?.*)?$/i.test(url) ||
+      url.includes("/storage/v1/object/public/");
+  };
+
+  const isSafePreviewUrl = (url?: string | null) => {
+    if (!url) return false;
+    if (url.startsWith("/")) return true;
+    const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseBase) return false;
+    return url.startsWith(`${supabaseBase}/storage/`);
+  };
+
+  const getReferencePreview = (ref: ReferenceData) => {
+    const thumbnailStored = ref.reference_metadata?.thumbnailStoredUrl;
+    const thumbnail = ref.reference_metadata?.thumbnail;
+
+    if (ref.reference_type === "image") {
+      if (isLikelyImageUrl(thumbnailStored) && isSafePreviewUrl(thumbnailStored)) return thumbnailStored as string;
+      if (isLikelyImageUrl(thumbnail) && isSafePreviewUrl(thumbnail)) return thumbnail as string;
+      if (isLikelyImageUrl(ref.reference_url) && isSafePreviewUrl(ref.reference_url)) return ref.reference_url;
+      return "/window.svg";
+    }
+
+    if (ref.reference_type === "video") {
+      if (isLikelyImageUrl(thumbnailStored) && isSafePreviewUrl(thumbnailStored)) return thumbnailStored as string;
+      if (isLikelyImageUrl(thumbnail) && isSafePreviewUrl(thumbnail)) return thumbnail as string;
+      return "/next.svg";
+    }
+
+    if (ref.reference_type === "audio") return "/vercel.svg";
+    if (ref.reference_type === "document") return "/file.svg";
+    return "/file.svg";
+  };
+
+  const handleDeleteReference = useCallback(async (ref: ReferenceData) => {
+    try {
+      const urlParts = (ref.reference_url || "").split(`/storage/v1/object/public/${STORAGE_BUCKET}/`);
+      if (urlParts.length > 1) {
+        const storagePath = decodeURIComponent(urlParts[1]);
+        await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
+      }
+    } catch {
+      // best effort storage cleanup
+    }
+
+    try {
+      await deleteReference(ref.reference_id);
+      showToast("Reference removed");
+    } catch (err: any) {
+      showToast(err?.message || "Failed to remove reference");
+    }
+  }, [deleteReference, showToast]);
+
+  const handleDeleteWorkspace = async () => {
+    try {
+      setIsDeleting(true);
+      await deleteWorkspace?.();
+      showToast("Workspace deleted");
+      router.push("/dashboard");
+    } catch (err: any) {
+      showToast(err?.message || "Failed to delete workspace");
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteConfirmOpen(false);
+    }
+  };
+
+  const handleOpenReference = useCallback((url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const handleShare = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href);
+    showToast("Link copied");
+  }, [showToast]);
+
+  const handleDuplicate = useCallback(() => {
+    showToast("Duplicated to your dashboard");
+  }, [showToast]);
+
   const handleMemberCategoryChange = async (memberId: string, selected: string) => {
     try {
       let nextCategory: string | null = selected;
@@ -284,51 +307,12 @@ export default function WorkspaceClient({
         nextCategory = custom.trim();
       }
 
-      await updateMemberCategory?.(memberId, nextCategory);
+      await updateMemberCategory?.(memberId, nextCategory === "Unassigned" ? null : nextCategory);
       setCategoryMenuMemberId(null);
       showToast("Member category updated");
     } catch (err: any) {
       showToast(err?.message || "Failed to update category");
     }
-  };
-
-  const handleLike = useCallback(async () => {
-    if (!workspace) return;
-    showToast("Added to your Favorites 💖");
-  }, [workspace, showToast]);
-
-  const handleShare = useCallback(() => {
-    navigator.clipboard.writeText(window.location.href);
-    showToast("Link copied to clipboard! 📋");
-  }, [showToast]);
-
-  const handleDuplicate = useCallback(async () => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-    showToast("Duplicated to your Dashboard ✨");
-  }, [user, router, showToast]);
-
-  const handleOpenReference = useCallback((url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
-
-  const handleTagClick = useCallback((tag: string) => {
-    setSearchQuery(tag);
-  }, []);
-
-  const getCategoryEmoji = (category: string) => {
-    const emojiMap: Record<string, string> = {
-      Design: "🎨",
-      Code: "💻",
-      Audio: "🎧",
-      Branding: "✨",
-      Mobile: "📱",
-      Video: "🎬",
-      Writing: "📝",
-    };
-    return emojiMap[category] || "📁";
   };
 
   if (loading || authLoading || !workspace) {
@@ -342,21 +326,301 @@ export default function WorkspaceClient({
     );
   }
 
+  if (!permissions.canView) {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center">
+        <h2 className="text-2xl font-bold text-stone-900 mb-2">Private Workspace</h2>
+        <p className="text-stone-500">You do not have access to this workspace.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto pb-20">
-      {permissions.canEdit && workspace && (
+      <WorkspaceHeader
+        id={workspace.workspace_id}
+        title={workspace.workspace_title || "Untitled Workspace"}
+        description={workspace.workspace_description || "No description"}
+        coverImage={workspace.workspace_cover_image || undefined}
+        category="Workspace"
+        views={typedReferences.length * 3}
+        likes={typedReferences.length}
+        author={{
+          id: owner?.profile_id || workspace.workspace_owner_id,
+          name: owner?.display_name || "Workspace Owner",
+          avatar: owner?.profile_avatar_url || null,
+        }}
+        isOwner={workspace.workspace_owner_id === user?.id}
+        onLike={() => showToast("Added to favorites")}
+        onShare={handleShare}
+        onDuplicate={handleDuplicate}
+        onFollow={() => toggleFollow()}
+        isFollowing={isFollowing}
+        onInvite={() => setIsMembersModalOpen(true)}
+        onSettings={() => router.push(`/workspace/${workspace.workspace_id}/settings`)}
+        onManageTags={() => setIsTagManagerOpen(true)}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-6 mt-6">
+        <WorkspaceSidebar
+          folders={typedFolders}
+          references={typedReferences}
+          tags={tags}
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+          onTagClick={(tag) => setSearchQuery(tag)}
+          canManageFolders={permissions.canManageMembers}
+          onCreateFolder={() => setIsCreateFolderOpen(true)}
+          onDeleteFolder={async (folderId) => {
+            try {
+              await deleteFolder?.(folderId);
+              showToast("Folder deleted");
+            } catch (err: any) {
+              showToast(err?.message || "Failed to delete folder");
+            }
+          }}
+        />
+
+        <main>
+          <div className="bg-white rounded-4xl border border-stone-100 p-5 mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="relative flex-1 max-w-xl">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search references"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400/60"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "grid" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "list" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
+              >
+                <List className="w-4 h-4" />
+              </button>
+
+              <div className="relative">
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as any)}
+                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                >
+                  <option value="type">Group: Type</option>
+                  <option value="folder">Group: Folder</option>
+                  <option value="none">Group: None</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="alphabetical">A-Z</option>
+                  <option value="reverse-alphabetical">Z-A</option>
+                </select>
+                <ArrowDownUp className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {permissions.canEdit && (
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-[#1c1917] text-white font-bold text-sm flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Add
+                </button>
+              )}
+
+              <button
+                onClick={() => setIsChatOpen(true)}
+                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
+                title="Open chat"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setIsMembersModalOpen(true)}
+                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
+                title="Manage members"
+              >
+                <Users className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setIsActivityLogOpen(true)}
+                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
+                title="Activity log"
+              >
+                <Activity className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {filteredReferences.length === 0 ? (
+            <div className="bg-white rounded-4xl border border-dashed border-stone-200 p-12 text-center text-stone-500">
+              No references found.
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {groupedReferences.map(([groupKey, groupRefs]) => (
+                <section key={groupKey}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">
+                      {resolveGroupLabel(groupKey)}
+                    </h3>
+                    <span className="text-xs text-stone-400">{groupRefs.length}</span>
+                  </div>
+
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" : "space-y-4"}>
+                    {groupRefs.map((ref) => (
+                      <ReferenceCard
+                        key={ref.reference_id}
+                        id={ref.reference_id}
+                        title={ref.reference_title || "Untitled"}
+                        source={getReferenceSource(ref)}
+                        referenceStatus={ref.reference_status}
+                        imageUrl={getReferencePreview(ref)}
+                        tags={(ref.tags || []).map((t) => t.tag_name)}
+                        type={getCardType(ref.reference_type)}
+                        colorPalette={ref.reference_metadata?.colorPalette}
+                        folders={typedFolders}
+                        currentFolderId={ref.folder_id || null}
+                        onOpen={() => handleOpenReference(ref.reference_url)}
+                        onClick={() => setSelectedReference(ref)}
+                        onDelete={permissions.canEdit ? () => handleDeleteReference(ref) : undefined}
+                        onEdit={permissions.canEdit ? () => {
+                          setEditingReference(ref);
+                          setIsEditModalOpen(true);
+                        } : undefined}
+                        onMove={permissions.canEdit ? async (folderId) => {
+                          try {
+                            await moveReference?.(ref.reference_id, folderId);
+                            showToast("Reference moved");
+                          } catch (err: any) {
+                            showToast(err?.message || "Failed to move reference");
+                          }
+                        } : undefined}
+                        canDelete={permissions.canEdit}
+                        canEdit={permissions.canEdit}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+
+        </main>
+
+        <aside className="hidden lg:block sticky top-24 h-fit">
+          <div className="bg-white rounded-4xl border border-stone-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">Member Categories</h3>
+              <span className="text-xs text-stone-400">{typedMembers.length}</span>
+            </div>
+
+            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+              {memberCategoryGroups.map(([category, categoryMembers]) => (
+                <div key={category} className="border border-stone-100 rounded-2xl p-3">
+                  <p className="text-sm font-semibold text-stone-800 mb-2">{category}</p>
+                  <div className="space-y-2">
+                    {categoryMembers.map((member) => {
+                      const displayName = member.profile?.display_name || member.profile?.profile_email || "Member";
+                      const email = member.profile?.profile_email || "No email";
+                      const avatar = member.profile?.profile_avatar_url || "";
+                      const canEditCategory = permissions.canManageMembers && member.member_role !== "owner";
+                      return (
+                        <div key={member.profile_id} className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 px-2.5 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {avatar ? (
+                              <img src={avatar} alt={displayName} className="w-7 h-7 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-700 text-[10px] font-bold flex items-center justify-center">
+                                {(displayName[0] || "U").toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-stone-800 truncate">{displayName}</p>
+                              <p className="text-[11px] text-stone-500 truncate">{email}</p>
+                            </div>
+                          </div>
+
+                          {canEditCategory ? (
+                            <div className="relative shrink-0">
+                              <button
+                                onClick={() => setCategoryMenuMemberId((prev) => (prev === member.profile_id ? null : member.profile_id))}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-stone-200 text-[11px] text-stone-600 bg-white"
+                              >
+                                Category <ChevronDown className="w-3 h-3" />
+                              </button>
+                              {categoryMenuMemberId === member.profile_id && (
+                                <div className="absolute right-0 mt-2 w-40 bg-white border border-stone-200 rounded-xl shadow-lg z-20 py-1">
+                                  <button
+                                    onClick={() => handleMemberCategoryChange(member.profile_id, "Unassigned")}
+                                    className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-stone-50"
+                                  >
+                                    Unassigned
+                                  </button>
+                                  {customCategoryOptions.map((option) => (
+                                    <button
+                                      key={option}
+                                      onClick={() => handleMemberCategoryChange(member.profile_id, option)}
+                                      className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-stone-50"
+                                    >
+                                      {option}
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => handleMemberCategoryChange(member.profile_id, "__custom__")}
+                                    className="w-full text-left px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-50"
+                                  >
+                                    + Custom
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 shrink-0">
+                              {member.member_role === "owner" ? "Owner" : member.member_role === "viewer" ? "Viewer" : "Member"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {permissions.canEdit && (
         <AddReferenceModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           workspaceId={workspace.workspace_id}
           folders={typedFolders}
-          onReferenceAdded={() => {
-            if (refetch) refetch();
-          }}
+          onReferenceAdded={() => refetch?.()}
         />
       )}
 
-      {permissions.canEdit && workspace && editingReference && updateReference && (
+      {permissions.canEdit && editingReference && (
         <EditReferenceModal
           isOpen={isEditModalOpen}
           onClose={() => {
@@ -365,477 +629,111 @@ export default function WorkspaceClient({
           }}
           workspaceId={workspace.workspace_id}
           reference={editingReference}
-          onUpdate={updateReference}
-          onUpdated={() => {
-            if (refetch) refetch();
+          onUpdate={async (referenceId, updates) => {
+            await updateReference?.(referenceId, updates);
           }}
+          onUpdated={() => refetch?.()}
         />
       )}
 
-      {permissions.canManageMembers && workspace && (
-        <ManageMembersModal
-          isOpen={isMembersModalOpen}
-          onClose={() => setIsMembersModalOpen(false)}
-          members={typedMembers}
-          currentUserId={user?.id}
-          ownerId={workspace.workspace_owner_id}
-          canManageMembers={permissions.canManageMembers}
-          onInviteMember={inviteMemberByEmail!}
-          onRemoveMember={removeMember!}
-        />
-      )}
+      <ManageMembersModal
+        isOpen={isMembersModalOpen}
+        onClose={() => setIsMembersModalOpen(false)}
+        members={typedMembers}
+        currentUserId={user?.id}
+        ownerId={workspace.workspace_owner_id}
+        canManageMembers={permissions.canManageMembers}
+        onInviteMember={async (email) => {
+          await inviteMemberByEmail?.(email);
+          showToast("Invite sent");
+        }}
+        onRemoveMember={async (profileId) => {
+          await removeMember?.(profileId);
+          showToast("Member removed");
+        }}
+        onUpdateRole={async (profileId, role) => {
+          await updateMemberRole?.(profileId, role);
+          showToast("Member role updated");
+        }}
+      />
 
-      {isOwner && (
-        <CreateFolderModal
-          isOpen={isCreateFolderOpen}
-          onClose={() => setIsCreateFolderOpen(false)}
-          onCreate={async (name) => {
-            if (createFolder) await createFolder(name);
-            showToast(`Folder "${name}" created!`);
-          }}
-        />
-      )}
+      <TagManager
+        isOpen={isTagManagerOpen}
+        onClose={() => setIsTagManagerOpen(false)}
+        workspaceId={workspace.workspace_id}
+        onTagsUpdated={() => refetch?.()}
+      />
 
-      {workspace && (
-        <TagManager
-          isOpen={isTagManagerOpen}
-          onClose={() => setIsTagManagerOpen(false)}
-          workspaceId={workspace.workspace_id}
-          onTagsUpdated={() => {
-            if (refetch) refetch();
-          }}
-        />
-      )}
+      <CreateFolderModal
+        isOpen={isCreateFolderOpen}
+        onClose={() => setIsCreateFolderOpen(false)}
+        onCreate={async (name) => {
+          await createFolder?.(name);
+          showToast("Folder created");
+        }}
+      />
 
       <ReferenceDetailsDrawer
         reference={selectedReference}
-        workspaceId={workspace?.workspace_id || ""}
+        workspaceId={workspace.workspace_id}
         currentUserId={user?.id}
         workspaceMembers={typedMembers}
         isOpen={!!selectedReference}
         onClose={() => setSelectedReference(null)}
         onOpen={handleOpenReference}
-        onEdit={(ref) => {
+        onEdit={permissions.canEdit ? (reference) => {
+          setEditingReference(reference);
           setSelectedReference(null);
-          setEditingReference(ref);
           setIsEditModalOpen(true);
-        }}
-        onDelete={(referenceId) => deleteReference?.(referenceId)}
+        } : undefined}
+        onDelete={permissions.canEdit ? async (referenceId) => {
+          const ref = typedReferences.find((r) => r.reference_id === referenceId);
+          if (ref) await handleDeleteReference(ref);
+          setSelectedReference(null);
+        } : undefined}
         canEdit={permissions.canEdit}
         canDelete={permissions.canEdit}
       />
 
-      {isDeleteConfirmOpen && workspace && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)} />
-          <div className="relative z-10 bg-white rounded-4xl p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-5 mx-auto">
-              <svg className="w-7 h-7 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </div>
-            <h2 className="text-xl font-bold text-stone-900 text-center mb-2">Delete Workspace</h2>
-            <p className="text-stone-500 text-center text-sm mb-1">
-              Are you sure you want to delete <span className="font-bold text-stone-900">"{workspace.workspace_title}"</span>?
-            </p>
-            <p className="text-red-500 text-center text-xs mb-8">This will permanently delete all references, messages, and member data. This cannot be undone.</p>
-            <div className="flex gap-3">
-              <button
-                disabled={isDeleting}
-                onClick={() => setIsDeleteConfirmOpen(false)}
-                className="flex-1 py-3 rounded-2xl border-2 border-stone-200 text-stone-700 font-bold hover:bg-stone-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={isDeleting}
-                onClick={async () => {
-                  if (!deleteWorkspace) return;
-                  setIsDeleting(true);
-                  try {
-                    await deleteWorkspace();
-                    showToast('Workspace deleted successfully');
-                    router.push(user?.id ? `/dashboard/${user.id}` : '/dashboard');
-                  } catch (err: any) {
-                    showToast(err.message || 'Failed to delete workspace');
-                    setIsDeleting(false);
-                    setIsDeleteConfirmOpen(false);
-                  }
-                }}
-                className="flex-1 py-3 rounded-2xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isDeleting ? (
-                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Deleting...</>
-                ) : 'Yes, Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <WorkspaceHeader
-        id={workspace?.workspace_id || ""}
-        title={workspace?.workspace_title || ""}
-        description={workspace?.workspace_description || ""}
-        coverImage={workspace?.workspace_cover_image || ""}
-        category="General"
-        categoryEmoji={getCategoryEmoji("General")}
-        views={0}
-        likes={0}
-        author={{
-          id: owner?.profile_id || "",
-          name: owner?.display_name ?? profile?.display_name ?? user?.email ?? "User",
-          avatar: owner?.profile_avatar_url || "",
-        }}
-        onLike={handleLike}
-        onShare={handleShare}
-        onDuplicate={handleDuplicate}
-        isOwner={!!isOwner}
-        isFollowing={isFollowing}
-        onFollow={toggleFollow}
-        onSettings={isOwner ? () => router.push(`/workspace/${workspace.workspace_id}/settings`) : undefined}
-        onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
-      />
-
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_240px] gap-8 float-in delay-2">
-        <WorkspaceSidebar
-          folders={typedFolders}
-          references={typedReferences}
-          tags={tags}
-          activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
-          onTagClick={handleTagClick}
-          canManageFolders={!!isOwner}
-          onCreateFolder={() => setIsCreateFolderOpen(true)}
-          onDeleteFolder={async (folderId) => {
-            if (deleteFolder) {
-              await deleteFolder(folderId);
-              setActiveFilter(null);
-              showToast("Folder deleted");
-            }
-          }}
-        />
-
-        <main>
-          <div className="flex items-center justify-between mb-6 bg-white p-2 pr-6 rounded-full shadow-sm border border-stone-100">
-            <div className="relative group w-full max-w-sm">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search inside this space..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-transparent border-none focus:outline-none text-stone-900 placeholder:text-stone-400 font-medium text-sm"
-              />
-            </div>
-            <div className="hidden sm:flex items-center gap-3">
-              <div className="relative group">
-                <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
-                  <span className="text-stone-400 font-normal">Group by:</span>
-                  <span className="capitalize">{groupBy === "type" ? "Type" : groupBy === "folder" ? "Collection" : "None"}</span>
-                  <ChevronDown className="w-3 h-3 text-stone-400" />
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-stone-100 p-1 hidden group-hover:block z-20">
-                  <button onClick={() => setGroupBy("type")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'type' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Type</button>
-                  <button onClick={() => setGroupBy("folder")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'folder' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Collection</button>
-                  <div className="h-px bg-stone-100 my-1" />
-                  <button onClick={() => setGroupBy("none")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${groupBy === 'none' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>None</button>
-                </div>
-              </div>
-              <div className="w-px h-6 bg-stone-200 mx-1"></div>
-              <div className="relative group">
-                <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
-                  <ArrowDownUp className="w-4 h-4" />
-                  <span className="capitalize hidden xl:inline">{sortBy === "newest" ? "Recent" : sortBy === "alphabetical" ? "A-Z" : sortBy.replace("-", " ")}</span>
-                  <span className="xl:hidden">Sort</span>
-                  <ChevronDown className="w-3 h-3 text-stone-400" />
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-stone-100 p-1 hidden group-hover:block z-20">
-                  <button onClick={() => setSortBy("newest")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'newest' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Newest first</button>
-                  <button onClick={() => setSortBy("oldest")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'oldest' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Oldest first</button>
-                  <div className="h-px bg-stone-100 my-1" />
-                  <button onClick={() => setSortBy("alphabetical")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'alphabetical' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Alphabetical (A-Z)</button>
-                  <button onClick={() => setSortBy("reverse-alphabetical")} className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-stone-50 ${sortBy === 'reverse-alphabetical' ? 'font-bold text-stone-900 bg-stone-50' : 'text-stone-500'}`}>Alphabetical (Z-A)</button>
-                </div>
-              </div>
-              <div className="w-px h-6 bg-stone-200 mx-1"></div>
-              <button
-                onClick={() => setViewMode("grid")}
-                className={viewMode === "grid" ? "text-stone-900" : "text-stone-400 hover:text-stone-900"}
-              >
-                <LayoutGrid className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={viewMode === "list" ? "text-stone-900" : "text-stone-400 hover:text-stone-900"}
-              >
-                <List className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setViewMode("compact")}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${
-                  viewMode === "compact"
-                    ? "bg-stone-900 text-white"
-                    : "text-stone-500 bg-stone-100 hover:bg-stone-200"
-                }`}
-              >
-                Compact
-              </button>
-            </div>
-          </div>
-
-          {viewMode === "compact" ? (
-            <div className="bg-white rounded-4xl border border-stone-100 overflow-hidden">
-              {compactGroupedReferences.map(([key, refs], index) => {
-                const isExpanded = !!expandedTypeGroups[key];
-                const meta = getGroupingMeta(key, groupBy === "folder" ? "folder" : "type");
-
-                return (
-                  <section key={key} className={index !== 0 ? "border-t border-stone-100" : ""}>
-                    <button
-                      type="button"
-                      onClick={() => toggleTypeGroup(key)}
-                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-stone-50 transition-colors"
-                    >
-                      <span className="text-stone-400">
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </span>
-                      <span className="text-stone-400">{meta.icon}</span>
-                      <h3 className="text-sm font-bold text-stone-700 uppercase tracking-widest text-left flex-1">
-                        {meta.label}
-                      </h3>
-                      <span className="text-xs bg-stone-100 text-stone-500 px-2 py-1 rounded-full font-bold">
-                        {refs.length}
-                      </span>
-                    </button>
-
-                    {isExpanded && (
-                      <div className="pb-2">
-                        {refs.map((ref) => (
-                          <button
-                            key={ref.reference_id}
-                            type="button"
-                            onClick={() => setSelectedReference(ref)}
-                            className="w-full px-5 py-3 text-left hover:bg-stone-50 transition-colors border-t border-stone-100/70"
-                          >
-                            <p className="text-sm font-semibold text-stone-900 truncate">
-                              {ref.reference_title || "Untitled"}
-                            </p>
-                            <p className="text-xs text-stone-400 truncate mt-0.5">
-                              {ref.reference_metadata?.source || ref.reference_url}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          ) : groupedReferences ? (
-            <div className="space-y-10">
-              {groupedReferences.map(([key, refs]) => {
-                const meta = getGroupingMeta(key, groupBy === "folder" ? "folder" : "type");
-                return (
-                  <div key={key}>
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="text-stone-400">{meta.icon}</span>
-                      <h3 className="font-bold text-stone-700 text-sm uppercase tracking-widest">{meta.label}</h3>
-                      <span className="text-xs bg-stone-100 text-stone-400 px-2 py-0.5 rounded-full">{refs.length}</span>
-                    </div>
-                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-                      {refs.map((ref) => (
-                        <ReferenceCard
-                          key={ref.reference_id}
-                          id={ref.reference_id}
-                          title={ref.reference_title || "Untitled"}
-                          source={ref.reference_metadata?.source || ref.reference_url || ""}
-                          referenceStatus={ref.reference_status}
-                          imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
-                          tags={ref.tags?.map(t => t.tag_name) || []}
-                          type={getCardType(ref.reference_type)}
-                          colorPalette={ref.reference_metadata?.colorPalette}
-                          folders={typedFolders}
-                          currentFolderId={ref.folder_id}
-                          onOpen={() => handleOpenReference(ref.reference_url)}
-                          onClick={() => setSelectedReference(ref)}
-                          onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
-                          onDelete={() => deleteReference?.(ref.reference_id)}
-                          onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
-                          canEdit={permissions.canEdit}
-                          canDelete={permissions.canEdit}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
-              {filteredReferences.map((ref) => (
-                <ReferenceCard
-                  key={ref.reference_id}
-                  id={ref.reference_id}
-                  title={ref.reference_title || "Untitled"}
-                  source={ref.reference_metadata?.source || ref.reference_url || ""}
-                  referenceStatus={ref.reference_status}
-                  imageUrl={ref.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
-                  tags={ref.tags?.map(t => t.tag_name) || []}
-                  type={getCardType(ref.reference_type)}
-                  colorPalette={ref.reference_metadata?.colorPalette}
-                  folders={typedFolders}
-                  currentFolderId={ref.folder_id}
-                  onOpen={() => handleOpenReference(ref.reference_url)}
-                  onClick={() => setSelectedReference(ref)}
-                  onEdit={() => { setEditingReference(ref); setIsEditModalOpen(true); }}
-                  onDelete={() => deleteReference?.(ref.reference_id)}
-                  onMove={(folderId) => moveReference?.(ref.reference_id, folderId)}
-                  canEdit={permissions.canEdit}
-                  canDelete={permissions.canEdit}
-                />
-              ))}
-            </div>
-          )}
-
-          {filteredReferences.length === 0 && (
-            <div className="text-center py-16">
-              <p className="text-stone-500 text-lg">
-                {searchQuery
-                  ? `No references found for "${searchQuery}"`
-                  : "No references in this collection yet."}
-              </p>
-              {permissions.canEdit && (
-                <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="mt-4 px-6 py-3 bg-[#1c1917] text-white rounded-full font-medium hover:bg-stone-800 transition-colors"
-                >
-                  Add your first reference
-                </button>
-              )}
-            </div>
-          )}
-        </main>
-
-        <aside className="hidden lg:block sticky top-32 h-fit bg-white/70 backdrop-blur-xl border border-white/50 rounded-[40px] p-5 shadow-sm">
-          <h3 className="font-bold text-stone-900 mb-4">Team</h3>
-
-          <div className="space-y-5">
-            {memberCategoryGroups.map(([category, groupMembers]) => (
-              <div key={category}>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{category}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {groupMembers.map((member) => {
-                    const name = member.profile?.display_name || "Unknown User";
-                    const avatar = member.profile?.profile_avatar_url || "";
-                    const initial = (name.trim()?.[0] || "U").toUpperCase();
-
-                    return (
-                      <div
-                        key={member.profile_id}
-                        className="relative group bg-white rounded-2xl border border-stone-100 p-2 flex flex-col items-center text-center"
-                      >
-                        {avatar ? (
-                          <img
-                            src={avatar}
-                            alt={name}
-                            className="w-10 h-10 rounded-full object-cover mb-1"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold mb-1">
-                            {initial}
-                          </div>
-                        )}
-                        <p className="text-xs font-medium text-stone-700 truncate w-full">{name}</p>
-
-                        {isOwner && (
-                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <select
-                              value={member.member_category || ""}
-                              onChange={(event) => handleMemberCategoryChange(member.profile_id, event.target.value)}
-                              onClick={() => setCategoryMenuMemberId(member.profile_id)}
-                              onBlur={() => setCategoryMenuMemberId((current) => (current === member.profile_id ? null : current))}
-                              className="text-[10px] border border-stone-200 rounded-md px-1 py-0.5 bg-white text-stone-600"
-                            >
-                              <option value="">Unassigned</option>
-                                {customCategoryOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                              <option value="__custom__">+ Custom</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </div>
-
-      {permissions.canEdit && (
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="fixed bottom-8 right-8 w-16 h-16 bg-linear-to-tr from-lime-400 to-green-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-lime-500/40 hover:scale-110 hover:rotate-90 transition-all duration-500 z-30"
-        >
-          <Plus className="w-8 h-8" />
-        </button>
-      )}
-
-      {permissions.canManageMembers && (
-        <button
-          onClick={() => setIsMembersModalOpen(true)}
-          className={`fixed bottom-8 ${permissions.canEdit ? 'right-28' : 'right-8'} w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
-          title="Manage Members"
-        >
-          <Users className="w-6 h-6" />
-        </button>
-      )}
-
-      {typedMembers.some((m) => m.profile_id === user?.id) && (
-        <button
-          onClick={() => setIsActivityLogOpen(true)}
-          className={`fixed bottom-8 ${
-            permissions.canManageMembers && permissions.canEdit ? 'right-46' :
-            permissions.canManageMembers || permissions.canEdit ? 'right-28' :
-            'right-8'
-          } w-14 h-14 bg-white rounded-full flex items-center justify-center text-stone-900 shadow-xl hover:scale-110 transition-all duration-300 z-30 border border-stone-100`}
-          title="Activity Log"
-        >
-          <Activity className="w-6 h-6" />
-        </button>
-      )}
-
-      {typedMembers.some((m) => m.profile_id === user?.id) && (
-        <button
-          onClick={() => setIsChatOpen(true)}
-          className={`fixed bottom-8 ${
-            permissions.canManageMembers && permissions.canEdit ? 'right-64' :
-            permissions.canManageMembers || permissions.canEdit ? 'right-46' :
-            'right-28'
-          } w-14 h-14 bg-[#1c1917] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
-        >
-          <MessageCircle className="w-6 h-6" />
-        </button>
-      )}
-
       <ActivityLogDrawer
         isOpen={isActivityLogOpen}
         onClose={() => setIsActivityLogOpen(false)}
-        workspaceId={workspaceId || ""}
+        workspaceId={workspace.workspace_id}
         references={typedReferences}
         members={typedMembers}
       />
 
-      {typedMembers.some((m) => m.profile_id === user?.id) && workspaceId && (
-        <WorkspaceChat
-          workspaceId={workspaceId}
-          currentUserId={user?.id}
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-        />
+      <WorkspaceChat
+        workspaceId={workspace.workspace_id}
+        currentUserId={user?.id}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
+
+      {permissions.canDeleteWorkspace && isDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-stone-900/50" onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)} />
+          <div className="relative z-10 bg-white rounded-3xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-stone-900 mb-2">Delete Workspace?</h3>
+            <p className="text-sm text-stone-500 mb-6">This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteWorkspace}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

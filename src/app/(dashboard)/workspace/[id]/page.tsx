@@ -73,13 +73,13 @@ export default async function PublicWorkspacePage({
   const initialMembers = membersResp.data || [];
   const initialFolders = foldersResp.data || [];
 
-  const initialUserRole: "owner" | "editor" | "viewer" | null = (() => {
+  const initialUserRole: "owner" | "member" | "viewer" | null = (() => {
     if (!user || !initialWorkspace) return null;
     if (initialWorkspace.workspace_owner_id === user.id) return "owner";
     const member = initialMembers.find((m: any) => m.profile_id === user.id);
     if (!member) return null;
     if (member.member_role === "owner") return "owner";
-    if (member.member_role === "editor") return "editor";
+    if (member.member_role === "member") return "member";
     return "viewer";
   })();
 

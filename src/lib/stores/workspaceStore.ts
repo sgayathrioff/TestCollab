@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 type WorkspaceMember = {
   profile_id: string
-  member_role: 'owner' | 'editor' | 'viewer'
+  member_role: 'owner' | 'member' | 'viewer'
   member_category?: string | null
   profiles?: { display_name: string | null; profile_avatar_url: string | null; profile_email: string | null }
 }
@@ -27,7 +27,7 @@ type WorkspaceStore = {
   workspace: Workspace | null
   members: WorkspaceMember[]
   folders: Folder[]
-  userRole: 'owner' | 'editor' | 'viewer' | null
+  userRole: 'owner' | 'member' | 'viewer' | null
   setWorkspace: (w: Workspace | null) => void
   setMembers: (m: WorkspaceMember[]) => void
   setFolders: (f: Folder[]) => void

@@ -207,6 +207,9 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       // 3. Detect platform and file type
       const info = detectPlatform(referenceUrl);
       let type = getFileTypeFromUrl(referenceUrl);
+      if (!info.isKnownPlatform) {
+        type = "link";
+      }
       if (!type) type = "link";
 
       // 4. Insert placeholder row first
@@ -307,10 +310,13 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
           if (data.error) throw new Error(data.error);
 
           const finalType = data.actualType ?? data.type ?? type;
-          if (finalType !== 'link' && !data.publicUrl) throw new Error('No storage URL returned from import');
           const finalUrl = data.mode === 'platform'
-            ? ((finalType === 'image' || finalType === 'video') && data.publicUrl ? data.publicUrl : (data.sourceUrl || referenceUrl))
+            ? (data.publicUrl || data.sourceUrl || referenceUrl)
             : (data.publicUrl || referenceUrl);
+
+          if (!finalUrl) {
+            throw new Error('No URL returned from import');
+          }
 
           const readyUpdate: Record<string, any> = {
             reference_url: finalUrl,
@@ -320,6 +326,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
               source_url: referenceUrl,
               ...(data.metadata || {}),
               thumbnailStoredUrl: data.publicUrl || null,
+              platform: info.platform,
             },
           };
 

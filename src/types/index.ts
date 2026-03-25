@@ -13,14 +13,14 @@ export interface Workspace {
   ownerId: string;
   description?: string;
   privacy: 'public' | 'private';
-  members: Record<string, 'owner' | 'member'>;
+  members: Record<string, 'owner' | 'member' | 'viewer'>;
   createdAt: number;
 }
 
 export interface WorkspaceMember {
   workspace_id: string;
   profile_id: string;
-  member_role: 'owner' | 'member';
+  member_role: 'owner' | 'member' | 'viewer';
   member_category?: string | null;
   member_joined_at: string;
   profile?: {
@@ -31,8 +31,7 @@ export interface WorkspaceMember {
   };
 }
 
-// Simplified: just owner and member
-export type MemberRole = 'owner' | 'member';
+export type MemberRole = 'owner' | 'member' | 'viewer';
 
 export interface MemberPermissions {
   canView: boolean;

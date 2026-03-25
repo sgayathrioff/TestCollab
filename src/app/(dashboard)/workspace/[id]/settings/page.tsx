@@ -149,6 +149,16 @@ export default function WorkspaceSettingsPage({
         .eq("workspace_id", workspaceId)
         .eq("workspace_owner_id", user.id);
 
+      const { error: saveActivityError } = await supabase.from("activity_logs").insert({
+        activity_type: "updated_workspace",
+        activity_target_title: title || workspace.workspace_title || "Untitled Workspace",
+        workspace_id: workspaceId,
+        actor_profile_id: user.id,
+      });
+      if (saveActivityError) {
+        console.warn("Failed to log updated_workspace activity", saveActivityError);
+      }
+
       setWorkspace((prev) => (prev ? { ...prev, workspace_cover_image: finalBannerUrl } : prev));
       setBannerPreview(finalBannerUrl || "");
       setBannerFile(null);
@@ -165,6 +175,17 @@ export default function WorkspaceSettingsPage({
       .update({ is_archived: true })
       .eq("workspace_id", workspaceId)
       .eq("workspace_owner_id", user.id);
+
+    const { error: archiveActivityError } = await supabase.from("activity_logs").insert({
+      activity_type: "archived_workspace",
+      activity_target_title: workspace?.workspace_title || "Untitled Workspace",
+      workspace_id: workspaceId,
+      actor_profile_id: user.id,
+    });
+    if (archiveActivityError) {
+      console.warn("Failed to log archived_workspace activity", archiveActivityError);
+    }
+
     router.push(`/dashboard/${user.id}`);
   };
 
@@ -176,6 +197,17 @@ export default function WorkspaceSettingsPage({
       .delete()
       .eq("workspace_id", workspaceId)
       .eq("workspace_owner_id", user.id);
+
+    const { error: deleteActivityError } = await supabase.from("activity_logs").insert({
+      activity_type: "deleted_workspace",
+      activity_target_title: workspace?.workspace_title || "Untitled Workspace",
+      workspace_id: workspaceId,
+      actor_profile_id: user.id,
+    });
+    if (deleteActivityError) {
+      console.warn("Failed to log deleted_workspace activity", deleteActivityError);
+    }
+
     router.push(`/dashboard/${user.id}`);
   };
 

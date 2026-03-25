@@ -21,31 +21,67 @@ export default async function UserDashboardPage({ params }: { params: Promise<{ 
     }
   );
 
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+
+  const effectiveUserId = authUser?.id || userId;
+
   const [{ data: memberRows }, { data: ownedWorkspaces }] = await Promise.all([
     supabase
       .from("workspace_members")
       .select("workspace_id, workspaces(*)")
-      .eq("profile_id", userId)
-      .limit(50),
+      .eq("profile_id", effectiveUserId)
+      .limit(200),
     supabase
       .from("workspaces")
       .select("*")
-      .eq("workspace_owner_id", userId)
+      .eq("workspace_owner_id", effectiveUserId)
       .order("workspace_created_at", { ascending: false })
-      .limit(50),
+      .limit(200),
   ]);
 
-  const memberWorkspaces = (memberRows || [])
+  const ownedWorkspaceIds = new Set((ownedWorkspaces || []).map((w: any) => w.workspace_id));
+
+  const joinedSharedWorkspaces = (memberRows || [])
     .map((row: any) => row.workspaces)
     .filter(Boolean)
     .flat();
 
-  const allWorkspaces = [...(ownedWorkspaces || []), ...(memberWorkspaces || [])];
+  const joinedSharedIds = new Set(
+    joinedSharedWorkspaces.map((w: any) => w.workspace_id).filter(Boolean)
+  );
+
+  const fallbackSharedIds = Array.from(
+    new Set(
+      (memberRows || [])
+        .map((row: any) => row.workspace_id)
+        .filter(
+          (id: string) =>
+            !!id && !ownedWorkspaceIds.has(id) && !joinedSharedIds.has(id)
+        )
+    )
+  );
+
+  const { data: fallbackSharedWorkspaces } = fallbackSharedIds.length
+    ? await supabase
+        .from("workspaces")
+        .select("*")
+        .in("workspace_id", fallbackSharedIds)
+        .order("workspace_created_at", { ascending: false })
+    : { data: [] as any[] };
+
+  const allWorkspaces = [
+    ...(ownedWorkspaces || []),
+    ...joinedSharedWorkspaces,
+    ...(fallbackSharedWorkspaces || []),
+  ];
   const uniqueWorkspaces = Array.from(
     new Map(allWorkspaces.map((w: any) => [w.workspace_id, w])).values()
   );
+  const activeWorkspaces = uniqueWorkspaces.filter((workspace: any) => !workspace.is_archived);
 
-  const workspaceIds = uniqueWorkspaces.map((w: any) => w.workspace_id);
+  const workspaceIds = activeWorkspaces.map((w: any) => w.workspace_id);
 
   const { data: activityLogs } = workspaceIds.length
     ? await supabase
@@ -58,9 +94,9 @@ export default async function UserDashboardPage({ params }: { params: Promise<{ 
 
   return (
     <DashboardClient
-      initialWorkspaces={uniqueWorkspaces}
+      initialWorkspaces={activeWorkspaces}
       initialActivityLogs={activityLogs || []}
-      userId={userId}
+      userId={effectiveUserId}
     />
   );
 }

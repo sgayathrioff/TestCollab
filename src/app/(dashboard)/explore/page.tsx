@@ -26,11 +26,11 @@ export default async function ExplorePage() {
       .select("workspace_id, workspace_title, workspace_description, workspace_visibility, workspace_created_at, workspace_owner_id")
       .eq("workspace_visibility", "public")
       .eq("is_archived", false)
-      .limit(24),
+      .limit(10),
     supabase
       .from("profiles")
       .select("profile_id, display_name, profile_avatar_url, profile_skills")
-      .limit(20),
+      .limit(10),
   ]);
 
   return <ExploreClient initialWorkspaces={publicWorkspaces || []} initialProfiles={profiles || []} />;

@@ -2,12 +2,19 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
-import { X, Clock, FileText, UserPlus, MessageSquare, Activity } from "lucide-react";
+import { X, Clock, FileText, UserPlus, MessageSquare, Activity, Trash2, Settings, Archive } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { ReferenceData, WorkspaceMember } from "@/types";
 import { formatDistanceToNow } from "date-fns"; // You might not have date-fns, I'll use native Intl
 
-type ActivityType = "reference_added" | "member_joined" | "comment_added";
+type ActivityType =
+  | "reference_added"
+  | "member_joined"
+  | "comment_added"
+  | "deleted_reference"
+  | "deleted_workspace"
+  | "updated_workspace"
+  | "archived_workspace";
 
 interface ActivityItem {
   id: string;
@@ -104,7 +111,31 @@ export function ActivityLogDrawer({
           details: {}
         }));
 
-        // 3. Fetch comments for these references
+        // 3. Fetch persisted activity logs (delete/update/archive actions are stored here)
+        const { data: activityRows } = await supabase
+          .from("activity_logs")
+          .select("activity_id, activity_type, activity_target_title, activity_created_at, actor_profile_id")
+          .eq("workspace_id", workspaceId)
+          .order("activity_created_at", { ascending: false })
+          .limit(100);
+
+        const logActivities: ActivityItem[] = (activityRows || [])
+          .filter((row: any) => !!row?.activity_type && !!row?.activity_created_at)
+          .map((row: any) => ({
+            id: `log-${row.activity_id}`,
+            type: row.activity_type as ActivityType,
+            timestamp: row.activity_created_at,
+            actor: {
+              id: row.actor_profile_id,
+              name: memberMap.get(row.actor_profile_id)?.name || "Unknown User",
+              avatar: memberMap.get(row.actor_profile_id)?.avatar || "",
+            },
+            details: {
+              targetName: row.activity_target_title || undefined,
+            },
+          }));
+
+        // 4. Fetch comments for these references
         // We only fetch if there are references
         let commentActivities: ActivityItem[] = [];
         if (references.length > 0) {
@@ -149,7 +180,7 @@ export function ActivityLogDrawer({
         }
 
         // Combine and sort
-        const allActivities = [...referenceActivities, ...memberActivities, ...commentActivities]
+        const allActivities = [...logActivities, ...referenceActivities, ...memberActivities, ...commentActivities]
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
         setActivities(allActivities);
@@ -221,6 +252,10 @@ export function ActivityLogDrawer({
                            {item.type === 'reference_added' && <div className="w-full h-full rounded-full bg-lime-100 flex items-center justify-center"><FileText className="w-2 h-2 text-lime-600" /></div>}
                            {item.type === 'member_joined' && <div className="w-full h-full rounded-full bg-blue-100 flex items-center justify-center"><UserPlus className="w-2 h-2 text-blue-600" /></div>}
                            {item.type === 'comment_added' && <div className="w-full h-full rounded-full bg-amber-100 flex items-center justify-center"><MessageSquare className="w-2 h-2 text-amber-600" /></div>}
+                           {item.type === 'deleted_reference' && <div className="w-full h-full rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="w-2 h-2 text-red-600" /></div>}
+                           {item.type === 'deleted_workspace' && <div className="w-full h-full rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="w-2 h-2 text-red-700" /></div>}
+                           {item.type === 'updated_workspace' && <div className="w-full h-full rounded-full bg-indigo-100 flex items-center justify-center"><Settings className="w-2 h-2 text-indigo-600" /></div>}
+                           {item.type === 'archived_workspace' && <div className="w-full h-full rounded-full bg-orange-100 flex items-center justify-center"><Archive className="w-2 h-2 text-orange-600" /></div>}
                          </div>
                       </div>
                     </div>
@@ -252,6 +287,30 @@ export function ActivityLogDrawer({
                             "{item.details.content}"
                           </div>
                         </div>
+                      )}
+
+                      {item.type === 'deleted_reference' && (
+                        <p className="text-xs text-stone-500 leading-relaxed">
+                          deleted reference <span className="font-semibold text-stone-700">"{item.details.targetName || "Untitled"}"</span>
+                        </p>
+                      )}
+
+                      {item.type === 'deleted_workspace' && (
+                        <p className="text-xs text-stone-500 leading-relaxed">
+                          deleted workspace <span className="font-semibold text-stone-700">"{item.details.targetName || "Untitled Workspace"}"</span>
+                        </p>
+                      )}
+
+                      {item.type === 'updated_workspace' && (
+                        <p className="text-xs text-stone-500 leading-relaxed">
+                          updated workspace details for <span className="font-semibold text-stone-700">"{item.details.targetName || "Untitled Workspace"}"</span>
+                        </p>
+                      )}
+
+                      {item.type === 'archived_workspace' && (
+                        <p className="text-xs text-stone-500 leading-relaxed">
+                          archived workspace <span className="font-semibold text-stone-700">"{item.details.targetName || "Untitled Workspace"}"</span>
+                        </p>
                       )}
                     </div>
                   </div>

@@ -21,6 +21,7 @@ export interface WorkspaceMember {
   workspace_id: string;
   profile_id: string;
   member_role: 'owner' | 'member';
+  member_category?: string | null;
   member_joined_at: string;
   profile?: {
     profile_id: string;
@@ -100,6 +101,13 @@ export interface Notification {
   notification_type: 'workspace_invite' | 'workspace_removal' | 'reference_added' | 'member_joined' | 'workspace_updated';
   notification_message: string;
   notification_link?: string;
+  notification_data?: {
+    workspace_id?: string;
+    workspace_title?: string;
+    inviter_id?: string;
+    inviter_name?: string;
+    [key: string]: any;
+  } | null;
   notification_is_read: boolean;
   notification_created_at: string;
   sender_name?: string;

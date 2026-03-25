@@ -64,6 +64,23 @@ export function useWorkspace(workspaceId: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const logActivity = useCallback(
+    async (activityType: string, activityTargetTitle?: string) => {
+      if (!user?.id || !workspaceId) return;
+      try {
+        await supabase.from("activity_logs").insert({
+          activity_type: activityType,
+          activity_target_title: activityTargetTitle ?? null,
+          workspace_id: workspaceId,
+          actor_profile_id: user.id,
+        });
+      } catch (activityErr) {
+        console.warn("Activity log insert failed:", activityErr);
+      }
+    },
+    [user?.id, workspaceId]
+  );
+
   // Skip all operations if no valid workspace ID
   const isValidWorkspaceId = workspaceId && workspaceId !== "skip" && workspaceId.trim() !== "";
 
@@ -241,6 +258,7 @@ export function useWorkspace(workspaceId: string) {
         workspace_id: workspaceId,
         profile_id: workspaceData.workspace_owner_id,
         member_role: 'owner' as MemberRole,
+        member_category: null,
         member_joined_at: workspaceData.workspace_created_at || new Date().toISOString(),
         profile: {
           profile_id: workspaceData.workspace_owner_id,
@@ -327,6 +345,10 @@ export function useWorkspace(workspaceId: string) {
     }
 
     try {
+      const deletedReferenceTitle =
+        references.find((ref) => ref.reference_id === referenceId)?.reference_title ||
+        "Untitled";
+
       const { error } = await supabase
         .from('references')
         .delete()
@@ -336,12 +358,13 @@ export function useWorkspace(workspaceId: string) {
 
       // Update local state
       removeReference(referenceId);
+      await logActivity('deleted_reference', deletedReferenceTitle);
 
     } catch (err: any) {
       console.error('Error deleting reference:', err);
       throw err;
     }
-  }, [user, getPermissions]);
+  }, [user, getPermissions, references, logActivity]);
 
   // Update reference
   const updateReference = useCallback(async (referenceId: string, updates: Partial<ReferenceData>) => {
@@ -404,6 +427,7 @@ export function useWorkspace(workspaceId: string) {
       if (error) throw error;
 
       setWorkspace(data);
+      await logActivity('updated_workspace', data?.workspace_title ?? workspace.workspace_title);
 
       // Notify all members (excluding the owner who made the change) about the update
       const otherMembers = members.filter(m => m.profile_id !== user.id);
@@ -424,7 +448,7 @@ export function useWorkspace(workspaceId: string) {
       console.error('Error updating workspace:', err);
       throw err;
     }
-  }, [user, workspace, workspaceId, members]);
+  }, [user, workspace, workspaceId, members, logActivity]);
 
   // Member management functions
   // Add a member (always as 'member' role - simplified)
@@ -530,6 +554,36 @@ export function useWorkspace(workspaceId: string) {
     }
   }, [user, workspace, workspaceId, getPermissions]);
 
+  const updateMemberCategory = useCallback(async (profileId: string, category: string | null): Promise<void> => {
+    if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
+
+    const permissions = getPermissions();
+    if (!permissions.canManageMembers) {
+      throw new Error('Only workspace owners can manage member categories');
+    }
+
+    const previousMembers = [...members];
+    setMembers(
+      members.map((member) =>
+        member.profile_id === profileId ? { ...member, member_category: category } : member
+      )
+    );
+
+    try {
+      const { error } = await supabase
+        .from('workspace_members')
+        .update({ member_category: category })
+        .eq('workspace_id', workspaceId)
+        .eq('profile_id', profileId);
+
+      if (error) throw error;
+    } catch (err: any) {
+      setMembers(previousMembers);
+      console.error('Error updating member category:', err);
+      throw err;
+    }
+  }, [user, workspace, members, workspaceId, getPermissions, setMembers]);
+
   // Invite member by email (always adds as 'member')
   const inviteMemberByEmail = useCallback(async (email: string): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
@@ -541,23 +595,57 @@ export function useWorkspace(workspaceId: string) {
 
     try {
       // Find user by email
-      const { data: profile, error: profileError } = await supabase
+      const [{ data: profile, error: profileError }, { data: inviterProfile }] = await Promise.all([
+        supabase
         .from('profiles')
         .select('profile_id')
         .eq('profile_email', email.toLowerCase().trim())
-        .single();
+        .single(),
+        supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('profile_id', user.id)
+          .maybeSingle(),
+      ]);
 
       if (profileError || !profile) {
         throw new Error('User not found with that email address');
       }
 
-      // Add them as a member
-      await addMember(profile.profile_id);
+      if (profile.profile_id === workspace.workspace_owner_id) {
+        throw new Error('Owner is already part of the workspace');
+      }
+
+      const existingMember = members.find(m => m.profile_id === profile.profile_id);
+      if (existingMember) {
+        throw new Error('User is already a member of this workspace');
+      }
+
+      const inviterName = inviterProfile?.display_name || 'Workspace owner';
+
+      const { error: inviteError } = await supabase
+        .from('notifications')
+        .insert({
+          recipient_profile_id: profile.profile_id,
+          notification_type: 'workspace_invite',
+          notification_message: `${inviterName} invited you to join ${workspace.workspace_title}`,
+          notification_link: `/workspace/${workspaceId}`,
+          notification_data: {
+            workspace_id: workspaceId,
+            workspace_title: workspace.workspace_title,
+            inviter_id: user.id,
+            inviter_name: inviterName,
+          },
+          notification_is_read: false,
+        });
+
+      if (inviteError) throw inviteError;
+
     } catch (err: any) {
       console.error('Error inviting member by email:', err);
       throw err;
     }
-  }, [user, workspace, getPermissions, addMember]);
+  }, [user, workspace, workspaceId, getPermissions, members]);
 
   // Create a new folder
   const createFolder = useCallback(async (name: string): Promise<WorkspaceFolder> => {
@@ -659,11 +747,12 @@ export function useWorkspace(workspaceId: string) {
         .eq('workspace_id', workspaceId);
 
       if (error) throw error;
+      await logActivity('deleted_workspace', workspace.workspace_title || 'Untitled Workspace');
     } catch (err: any) {
       console.error('Error deleting workspace:', err);
       throw err;
     }
-  }, [user, workspace, workspaceId, members, references, getPermissions]);
+  }, [user, workspace, workspaceId, members, references, getPermissions, logActivity]);
 
   // Check if current user is owner
   const isOwner = workspace && user && workspace.workspace_owner_id === user.id;
@@ -787,6 +876,7 @@ export function useWorkspace(workspaceId: string) {
     // Member management
     addMember,
     removeMember,
+    updateMemberCategory,
     inviteMemberByEmail,
     deleteWorkspace,
 

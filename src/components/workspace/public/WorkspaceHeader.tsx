@@ -19,7 +19,7 @@ interface WorkspaceHeaderProps {
   author: {
     id: string;
     name: string;
-    avatar: string;
+    avatar?: string | null;
   };
   onLike?: () => void;
   onShare?: () => void;
@@ -55,6 +55,7 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const [liked, setLiked] = useState(isLiked);
+  const authorInitial = (author.name?.trim()?.[0] || "U").toUpperCase();
   // Use prop if provided, otherwise local state (though usually controlled)
   // Check if we are in controlled mode effectively by seeing if we have a valid isFollowing prop
   
@@ -121,15 +122,24 @@ export function WorkspaceHeader({
 
               {/* Author */}
               <div className="flex items-center gap-3">
-                <Image
-                  src={author.avatar}
-                  alt={author.name}
-                  width={48}
-                  height={48}
-                  loading="lazy"
-                  className="w-12 h-12 rounded-full border-2 border-stone-100 cursor-pointer hover:ring-2 ring-lime-400 transition-all"
-                  onClick={() => router.push(`/profile/${author.id}`)}
-                />
+                {author.avatar ? (
+                  <Image
+                    src={author.avatar}
+                    alt={author.name}
+                    width={48}
+                    height={48}
+                    loading="lazy"
+                    className="w-12 h-12 rounded-full border-2 border-stone-100 cursor-pointer hover:ring-2 ring-lime-400 transition-all"
+                    onClick={() => router.push(`/profile/${author.id}`)}
+                  />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-full border-2 border-stone-100 bg-stone-200 text-stone-700 flex items-center justify-center font-bold cursor-pointer hover:ring-2 ring-lime-400 transition-all"
+                    onClick={() => router.push(`/profile/${author.id}`)}
+                  >
+                    {authorInitial}
+                  </div>
+                )}
                 <div>
                   <p className="text-sm text-stone-400 font-medium">Curated by</p>
                   <p

@@ -11,6 +11,7 @@ export function useNotifications() {
     unreadCount,
     setNotifications,
     addNotification,
+    removeNotification,
     markRead,
     markAllRead,
   } = useNotificationsStore();
@@ -183,5 +184,5 @@ export function useNotifications() {
     }
   };
 
-  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead };
+  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead, removeNotification };
 }

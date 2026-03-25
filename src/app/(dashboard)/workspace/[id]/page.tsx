@@ -58,7 +58,7 @@ export default async function PublicWorkspacePage({
       .limit(50),
     supabase
       .from("workspace_members")
-      .select("profile_id, member_role, profiles(display_name, profile_avatar_url, profile_email)")
+      .select("profile_id, member_role, member_category, profiles(display_name, profile_avatar_url, profile_email)")
       .eq("workspace_id", workspaceId)
       .limit(50),
     supabase

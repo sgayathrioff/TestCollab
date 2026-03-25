@@ -11,6 +11,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import type { Notification } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/Toast";
+import { useState } from "react";
 
 function timeAgo(dateStr: string): string {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -30,9 +34,61 @@ const typeConfig: Record<Notification['notification_type'], { icon: React.ReactN
 };
 
 export function NotificationBell() {
-  const { loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead } = useNotifications();
+  const { loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead, removeNotification } = useNotifications();
   const { notifications, unreadCount } = useNotificationsStore();
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const router = useRouter();
+  const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
+
+  const handleAcceptInvite = async (notification: Notification) => {
+    const workspaceId = notification.notification_data?.workspace_id;
+    const workspaceTitle = notification.notification_data?.workspace_title || "workspace";
+    if (!user?.id || !workspaceId) return;
+
+    try {
+      setProcessingInviteId(notification.notification_id);
+      const { error: memberError } = await supabase
+        .from("workspace_members")
+        .insert({
+          workspace_id: workspaceId,
+          profile_id: user.id,
+          member_role: "viewer",
+          member_joined_at: new Date().toISOString(),
+        });
+
+      if (memberError && memberError.code !== "23505") throw memberError;
+
+      await supabase
+        .from("notifications")
+        .delete()
+        .eq("notification_id", notification.notification_id);
+
+      removeNotification(notification.notification_id);
+      showToast(`You joined ${workspaceTitle}`);
+    } catch (err: any) {
+      showToast(err?.message || "Failed to accept invite");
+    } finally {
+      setProcessingInviteId(null);
+    }
+  };
+
+  const handleDeclineInvite = async (notification: Notification) => {
+    try {
+      setProcessingInviteId(notification.notification_id);
+      await supabase
+        .from("notifications")
+        .delete()
+        .eq("notification_id", notification.notification_id);
+
+      removeNotification(notification.notification_id);
+      showToast("Invite declined");
+    } catch (err: any) {
+      showToast(err?.message || "Failed to decline invite");
+    } finally {
+      setProcessingInviteId(null);
+    }
+  };
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.notification_is_read) {
@@ -98,7 +154,8 @@ export function NotificationBell() {
             <div className="divide-y divide-stone-50">
               {notifications.map((notification) => {
                 const config = typeConfig[notification.notification_type] ?? typeConfig.workspace_updated;
-                const isClickable = !!notification.notification_link;
+                const isInvite = notification.notification_type === "workspace_invite";
+                const isClickable = !!notification.notification_link && !isInvite;
                 return (
                   <div
                     key={notification.notification_id}
@@ -120,6 +177,30 @@ export function NotificationBell() {
                         {notification.notification_message}
                       </p>
                       <p className="text-xs text-stone-400 mt-1">{timeAgo(notification.notification_created_at)}</p>
+                      {isInvite && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAcceptInvite(notification);
+                            }}
+                            disabled={processingInviteId === notification.notification_id}
+                            className="px-3 py-1.5 rounded-lg bg-lime-600 text-white text-xs font-semibold hover:bg-lime-700 transition-colors"
+                          >
+                            {processingInviteId === notification.notification_id ? "Processing..." : "Accept"}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeclineInvite(notification);
+                            }}
+                            disabled={processingInviteId === notification.notification_id}
+                            className="px-3 py-1.5 rounded-lg bg-stone-200 text-stone-700 text-xs font-semibold hover:bg-stone-300 transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}

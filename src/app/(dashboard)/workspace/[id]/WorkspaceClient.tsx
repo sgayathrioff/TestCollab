@@ -42,7 +42,7 @@ export default function WorkspaceClient({
   initialUserRole,
 }: WorkspaceClientProps) {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const { showToast } = useToast();
 
   const { setWorkspace, setMembers, setFolders, setUserRole, reset } = useWorkspaceStore();
@@ -72,6 +72,7 @@ export default function WorkspaceClient({
     getPermissions,
     deleteReference,
     removeMember,
+    updateMemberCategory,
     inviteMemberByEmail,
     deleteWorkspace,
     updateReference,
@@ -103,6 +104,7 @@ export default function WorkspaceClient({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [categoryMenuMemberId, setCategoryMenuMemberId] = useState<string | null>(null);
   const [expandedTypeGroups, setExpandedTypeGroups] = useState<Record<string, boolean>>({
     image: true,
     video: true,
@@ -245,6 +247,49 @@ export default function WorkspaceClient({
     if (refType === "image") return "image";
     if (refType === "video") return "video";
     return "link";
+  };
+
+  const memberCategoryGroups = useMemo(() => {
+    const grouped = typedMembers.reduce((acc, member) => {
+      const key = member.member_category?.trim() || "Unassigned";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(member);
+      return acc;
+    }, {} as Record<string, WorkspaceMember[]>);
+
+    return Object.entries(grouped).sort(([a], [b]) => {
+      if (a === "Unassigned") return 1;
+      if (b === "Unassigned") return -1;
+      return a.localeCompare(b);
+    });
+  }, [typedMembers]);
+
+  const customCategoryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        typedMembers
+          .map((member) => member.member_category?.trim())
+          .filter((value): value is string => !!value)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [typedMembers]);
+
+  const handleMemberCategoryChange = async (memberId: string, selected: string) => {
+    try {
+      let nextCategory: string | null = selected;
+
+      if (selected === "__custom__") {
+        const custom = window.prompt("Enter custom category");
+        if (!custom || !custom.trim()) return;
+        nextCategory = custom.trim();
+      }
+
+      await updateMemberCategory?.(memberId, nextCategory);
+      setCategoryMenuMemberId(null);
+      showToast("Member category updated");
+    } catch (err: any) {
+      showToast(err?.message || "Failed to update category");
+    }
   };
 
   const handleLike = useCallback(async () => {
@@ -437,8 +482,8 @@ export default function WorkspaceClient({
         likes={0}
         author={{
           id: owner?.profile_id || "",
-          name: owner?.display_name || "Unknown User",
-          avatar: owner?.profile_avatar_url || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
+          name: owner?.display_name ?? profile?.display_name ?? user?.email ?? "User",
+          avatar: owner?.profile_avatar_url || "",
         }}
         onLike={handleLike}
         onShare={handleShare}
@@ -450,7 +495,7 @@ export default function WorkspaceClient({
         onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 float-in delay-2">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_240px] gap-8 float-in delay-2">
         <WorkspaceSidebar
           folders={typedFolders}
           references={typedReferences}
@@ -669,6 +714,65 @@ export default function WorkspaceClient({
             </div>
           )}
         </main>
+
+        <aside className="hidden lg:block sticky top-32 h-fit bg-white/70 backdrop-blur-xl border border-white/50 rounded-[40px] p-5 shadow-sm">
+          <h3 className="font-bold text-stone-900 mb-4">Team</h3>
+
+          <div className="space-y-5">
+            {memberCategoryGroups.map(([category, groupMembers]) => (
+              <div key={category}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{category}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {groupMembers.map((member) => {
+                    const name = member.profile?.display_name || "Unknown User";
+                    const avatar = member.profile?.profile_avatar_url || "";
+                    const initial = (name.trim()?.[0] || "U").toUpperCase();
+
+                    return (
+                      <div
+                        key={member.profile_id}
+                        className="relative group bg-white rounded-2xl border border-stone-100 p-2 flex flex-col items-center text-center"
+                      >
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt={name}
+                            className="w-10 h-10 rounded-full object-cover mb-1"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold mb-1">
+                            {initial}
+                          </div>
+                        )}
+                        <p className="text-xs font-medium text-stone-700 truncate w-full">{name}</p>
+
+                        {isOwner && (
+                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <select
+                              value={member.member_category || ""}
+                              onChange={(event) => handleMemberCategoryChange(member.profile_id, event.target.value)}
+                              onClick={() => setCategoryMenuMemberId(member.profile_id)}
+                              onBlur={() => setCategoryMenuMemberId((current) => (current === member.profile_id ? null : current))}
+                              className="text-[10px] border border-stone-200 rounded-md px-1 py-0.5 bg-white text-stone-600"
+                            >
+                              <option value="">Unassigned</option>
+                                {customCategoryOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                              <option value="__custom__">+ Custom</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
       </div>
 
       {permissions.canEdit && (

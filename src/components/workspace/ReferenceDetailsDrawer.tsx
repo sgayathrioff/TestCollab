@@ -327,10 +327,18 @@ export function ReferenceDetailsDrawer({
 
   if (!isOpen || !reference) return null;
 
+  const referenceTitle = reference.reference_title ?? "Untitled";
+  const referenceType = reference.reference_type ?? "document";
+  const referenceUrl = reference.reference_url ?? "";
+  const referenceTags = reference.tags ?? [];
+  const referenceThumbnail =
+    reference.reference_metadata?.thumbnail ||
+    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500";
+
   return (
-    <div className="fixed inset-0 z-60 flex justify-end">
+    <div className="fixed right-0 top-0 h-full w-full z-60 flex justify-end">
       <div className="absolute inset-0 bg-stone-900/45 backdrop-blur-[1px]" onClick={onClose} />
-      <aside className="relative w-full max-w-md h-full bg-white border-l border-stone-200 shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
+      <aside className="fixed right-0 top-0 h-full w-full max-w-md bg-white border-l border-stone-200 shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
         <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-stone-100 px-6 py-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-stone-900">Reference Details</h2>
           <button
@@ -343,10 +351,10 @@ export function ReferenceDetailsDrawer({
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="rounded-2xl overflow-hidden border border-stone-100 bg-stone-50 aspect-4/3">
+          <div className="relative rounded-2xl overflow-hidden border border-stone-100 bg-stone-50 aspect-4/3">
             <Image
-              src={reference.reference_metadata?.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"}
-              alt={reference.reference_title || "Untitled"}
+              src={referenceThumbnail}
+              alt={referenceTitle}
               fill
               loading="lazy"
               className="w-full h-full object-cover"
@@ -356,20 +364,20 @@ export function ReferenceDetailsDrawer({
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Title</p>
             <h3 className="text-2xl font-bold text-stone-900 wrap-break-word">
-              {reference.reference_title || "Untitled"}
+              {referenceTitle}
             </h3>
           </div>
 
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Type</p>
             <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-stone-100 text-stone-700 uppercase">
-              {reference.reference_type || "document"}
+              {referenceType}
             </span>
           </div>
 
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">URL</p>
-            <p className="text-sm text-stone-600 break-all leading-relaxed">{reference.reference_url}</p>
+            <p className="text-sm text-stone-600 break-all leading-relaxed">{referenceUrl || "No URL"}</p>
           </div>
 
           <div>
@@ -377,8 +385,8 @@ export function ReferenceDetailsDrawer({
               <Tag className="w-3 h-3" /> Tags
             </p>
             <div className="flex flex-wrap gap-2">
-              {(reference.tags || []).length > 0 ? (
-                reference.tags?.map((tag) => (
+              {referenceTags.length > 0 ? (
+                referenceTags.map((tag) => (
                   <span
                     key={tag.tag_id}
                     className="px-2 py-1 rounded-lg bg-stone-100 text-stone-600 text-xs font-bold"
@@ -395,7 +403,8 @@ export function ReferenceDetailsDrawer({
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              onClick={() => onOpen(reference.reference_url)}
+              onClick={() => onOpen(referenceUrl)}
+              disabled={!referenceUrl}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1c1917] text-white text-sm font-bold hover:bg-stone-800 transition-colors"
             >
               <ExternalLink className="w-4 h-4" /> Open

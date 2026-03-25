@@ -5,22 +5,29 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
-import { Plus, Bell, LayoutGrid, FileText, ArrowUpRight, Users, FolderPlus } from "lucide-react";
+import { Plus, Bell, ArrowUpRight, Users, FolderPlus, Activity, Zap, Inbox } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardClient({
   initialWorkspaces,
   initialActivityLogs,
+  initialPendingInvites,
   userId,
+  ownedWorkspaceCount,
+  userReferencesCount,
 }: {
   initialWorkspaces: any[];
   initialActivityLogs: any[];
+  initialPendingInvites: any[];
   userId: string;
+  ownedWorkspaceCount: number;
+  userReferencesCount: number;
 }) {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>(initialWorkspaces || []);
+  const [pendingInvites] = useState<any[]>(initialPendingInvites || []);
 
   const date = new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
 
@@ -76,37 +83,67 @@ export default function DashboardClient({
           </div>
         </div>
 
-        <div className="lg:col-span-5 grid grid-cols-2 gap-4">
-          <div className="bg-white p-8 rounded-[40px] flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] min-h-70">
-            <div className="flex justify-between items-start">
-              <span className="text-stone-400 font-medium text-lg">Workspaces</span>
-              <div className="w-10 h-10 rounded-full bg-[#d9f99d] flex items-center justify-center text-[#365314]">
-                <LayoutGrid className="w-5 h-5" />
-              </div>
+        <div className="lg:col-span-5 grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="bg-white border border-stone-200 rounded-4xl p-6 shadow-sm min-h-80">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-stone-900 text-base font-semibold flex items-center gap-2"><Activity className="w-4 h-4" /> Recent Activity</h3>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Latest</span>
             </div>
-            <div>
-              <h2 className="text-6xl font-medium text-stone-900 mb-2">{workspaces.length}</h2>
-              <div className="flex -space-x-3 mt-4">
-                <div className="w-10 h-10 rounded-full border-[3px] border-white bg-stone-200"></div>
-                <div className="w-10 h-10 rounded-full border-[3px] border-white bg-stone-300"></div>
-                <div className="w-10 h-10 rounded-full border-[3px] border-white bg-stone-400"></div>
-              </div>
+            <div className="space-y-2.5">
+              {(initialActivityLogs || []).slice(0, 5).map((log: any) => (
+                <div key={log.activity_id} className="rounded-2xl bg-stone-50 border border-stone-200 px-4 py-3">
+                  <p className="text-sm font-medium text-stone-800 truncate leading-5">{log.activity_target_title || "Workspace update"}</p>
+                  <div className="flex items-center justify-between mt-1.5 gap-2">
+                    <p className="text-[11px] text-stone-500 uppercase tracking-wide truncate">{(log.activity_type || "activity").replace(/_/g, " ")}</p>
+                    <p className="text-[11px] text-stone-400 whitespace-nowrap">{log.created_at ? new Date(log.created_at).toLocaleDateString() : ""}</p>
+                  </div>
+                </div>
+              ))}
+              {(initialActivityLogs || []).length === 0 && (
+                <p className="text-sm text-stone-500 mt-10 text-center">No recent activity yet.</p>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
-            <div className="bg-[#d9f99d] p-6 rounded-4xl flex-1 hover:scale-[1.02] transition-transform duration-300 flex flex-col justify-center relative overflow-hidden group">
-              <FileText className="absolute -right-4 -bottom-4 w-24 h-24 text-[#bef264] rotate-12 group-hover:scale-110 transition-transform" />
-              <h3 className="text-4xl font-semibold text-[#1a2e05] relative z-10">1,248</h3>
-              <p className="text-[#365314] font-medium relative z-10">References</p>
+          <div className="space-y-5">
+            <div className="bg-white border border-stone-200 rounded-4xl p-6 shadow-sm">
+              <h3 className="text-stone-900 text-base font-semibold flex items-center gap-2 mb-4"><Zap className="w-4 h-4" /> Quick Actions</h3>
+              <div className="space-y-2.5">
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="w-full text-left px-4 py-3 rounded-2xl bg-stone-50 border border-stone-200 text-sm font-medium text-stone-700 hover:bg-stone-100 transition-colors"
+                >
+                  New Workspace
+                </button>
+                <Link
+                  href="/search"
+                  className="block px-4 py-3 rounded-2xl bg-stone-50 border border-stone-200 text-sm font-medium text-stone-700 hover:bg-stone-100 transition-colors"
+                >
+                  Search References
+                </Link>
+                <Link
+                  href="/explore"
+                  className="block px-4 py-3 rounded-2xl bg-stone-50 border border-stone-200 text-sm font-medium text-stone-700 hover:bg-stone-100 transition-colors"
+                >
+                  Explore Workspaces
+                </Link>
+              </div>
             </div>
 
-            <div className="bg-[#1c1917] p-6 rounded-4xl flex-1 hover:scale-[1.02] transition-transform duration-300 flex items-center justify-between text-white">
-              <div>
-                <p className="text-stone-400 text-sm mb-1">Storage</p>
-                <p className="text-2xl font-medium">75%</p>
+            <div className="bg-white border border-stone-200 rounded-4xl p-6 shadow-sm">
+              <h3 className="text-stone-900 text-base font-semibold flex items-center gap-2 mb-4"><Inbox className="w-4 h-4" /> Pending Invites</h3>
+              <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1">
+                {pendingInvites.slice(0, 6).map((invite) => (
+                  <div key={invite.notification_id} className="rounded-2xl bg-stone-50 border border-stone-200 px-4 py-3">
+                    <p className="text-sm font-medium text-stone-800 truncate">{invite.recipient_name || "Invitee"}</p>
+                    <p className="text-xs text-stone-500 truncate mt-0.5">{invite.workspace_title || "Workspace"}</p>
+                    <p className="text-[10px] text-amber-600 uppercase tracking-wider mt-1">Pending</p>
+                  </div>
+                ))}
+                {pendingInvites.length === 0 && (
+                  <p className="text-sm text-stone-500 mt-6 text-center">No pending invites.</p>
+                )}
               </div>
-              <div className="w-12 h-12 rounded-full border-4 border-stone-700 border-t-lime-400 animate-spin" style={{ animationDuration: '3s' }}></div>
             </div>
           </div>
         </div>

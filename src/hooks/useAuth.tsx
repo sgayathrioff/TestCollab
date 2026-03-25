@@ -1,19 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-
-// 1. Define a custom type that matches your Database
-export interface UserProfile extends User {
-  display_name?: string;
-  avatar_url?: string;
-}
+import { useAuthStore } from "@/lib/stores/authStore";
 
 export function useAuth() {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, setUser, setProfile, isLoading: loading, setIsLoading, clear } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -23,12 +16,12 @@ export function useAuth() {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
           console.error("Error fetching session:", sessionError);
-          setLoading(false);
+          setIsLoading(false);
           return;
         }
 
         if (!session?.user) {
-          setLoading(false);
+          setIsLoading(false);
           return;
         }
 
@@ -43,18 +36,14 @@ export function useAuth() {
           console.error("Error fetching profile:", profileError);
         }
 
-        // C. Merge them into one object
-        setUser({
-          ...session.user,
-          display_name: profile?.display_name,
-          avatar_url: profile?.profile_avatar_url, // Matches your DB column name
-        });
+        setUser({ id: session.user.id, email: session.user.email || "" });
+        setProfile(profile || null);
 
         // Note: Don't redirect here - let the auth callback or individual pages handle redirects
       } catch (error) {
         console.error("Error loading user:", error);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
@@ -74,25 +63,22 @@ export function useAuth() {
           console.error("Error fetching profile on auth change:", profileError);
         }
 
-        setUser({
-          ...session.user,
-          display_name: profile?.display_name,
-          avatar_url: profile?.profile_avatar_url,
-        });
+        setUser({ id: session.user.id, email: session.user.email || "" });
+        setProfile(profile || null);
       } else {
-        setUser(null);
+        clear();
         // Only redirect automatically on session timeout, not on manual signOut
         // (signOut function handles its own redirect)
       }
-      setLoading(false);
+      setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, clear, setIsLoading, setProfile, setUser]);
 
   const signOut = async () => {
     try {
-      setUser(null); // Clear user immediately for instant UI feedback
+      clear();
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error("Sign out error:", error);

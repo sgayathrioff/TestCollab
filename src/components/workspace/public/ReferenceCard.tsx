@@ -8,6 +8,7 @@ interface ReferenceCardProps {
   id: string;
   title: string;
   source: string;
+  referenceStatus?: "processing" | "ready" | "failed";
   imageUrl: string;
   tags: string[];
   type?: "image" | "link" | "color" | "video";
@@ -28,6 +29,7 @@ export function ReferenceCard({
   id,
   title,
   source,
+  referenceStatus,
   imageUrl,
   tags,
   type = "image",
@@ -184,6 +186,12 @@ export function ReferenceCard({
       <div className="p-5">
         <h3 className="font-bold text-lg text-stone-900 truncate">{title}</h3>
         <p className="text-stone-400 text-sm mb-3">{source}</p>
+        {referenceStatus === 'processing' && (
+          <p className="text-xs text-slate-400 animate-pulse mb-2">Downloading…</p>
+        )}
+        {referenceStatus === 'failed' && (
+          <p className="text-xs text-amber-400 mb-2">Saved as link</p>
+        )}
         <div className="flex flex-wrap gap-1">
           {tags.map((tag, index) => (
             <span

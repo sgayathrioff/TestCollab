@@ -6,12 +6,14 @@ import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Imag
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
+import { useWorkspaceStore } from "@/lib/stores/workspaceStore";
+import { useReferencesStore } from "@/lib/stores/referencesStore";
 import {
   ReferenceCard,
   WorkspaceHeader,
   WorkspaceSidebar,
 } from "@/components/workspace/public";
-import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { useToast } from "@/components/ui/Toast";
 import { AddReferenceModal } from "@/components/workspace/AddReferenceModal";
 import { EditReferenceModal } from "@/components/workspace/EditReferenceModal";
 import { ManageMembersModal } from "@/components/workspace/ManageMembersModal";
@@ -22,26 +24,51 @@ import { ActivityLogDrawer } from "@/components/workspace/ActivityLogDrawer";
 import { WorkspaceChat } from "@/components/workspace/chat";
 import type { ReferenceData, WorkspaceMember, FolderFilter } from "@/types";
 
-function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> }) {
+interface WorkspaceClientProps {
+  workspaceId: string;
+  initialWorkspace: any;
+  initialReferences: ReferenceData[];
+  initialMembers: WorkspaceMember[];
+  initialFolders: any[];
+  initialUserRole: "owner" | "editor" | "viewer" | null;
+}
+
+export default function WorkspaceClient({
+  workspaceId,
+  initialWorkspace,
+  initialReferences,
+  initialMembers,
+  initialFolders,
+  initialUserRole,
+}: WorkspaceClientProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
 
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  
-  // Use the useWorkspace hook for data management - only when workspaceId is available
-  const workspaceHookResult = useWorkspace(workspaceId || "skip");
-  
-  // Destructure with safe defaults when workspaceId is null
+  const { setWorkspace, setMembers, setFolders, setUserRole, reset } = useWorkspaceStore();
+  const { setReferences } = useReferencesStore();
+
+  useEffect(() => {
+    setWorkspace(initialWorkspace || null);
+    setMembers((initialMembers || []) as any);
+    setFolders((initialFolders || []) as any);
+    setUserRole(initialUserRole);
+    setReferences((initialReferences || []) as any);
+
+    return () => {
+      reset();
+      setReferences([]);
+    };
+  }, [initialWorkspace, initialMembers, initialFolders, initialUserRole, initialReferences, reset, setFolders, setMembers, setReferences, setUserRole, setWorkspace]);
+
   const {
     workspace = null,
-    owner = null,  
+    owner = null,
     references = [],
     members = [],
     folders = [],
-    loading = !workspaceId ? false : true,
+    loading = false,
     isOwner = false,
-    getCurrentUserRole,
     getPermissions,
     deleteReference,
     removeMember,
@@ -52,11 +79,10 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     createFolder,
     deleteFolder,
     moveReference,
-  } = workspaceId ? workspaceHookResult : {};
+  } = useWorkspace(workspaceId);
 
   const { isFollowing, toggleFollow } = useFollow(owner?.profile_id || "");
 
-  // Local state for UI
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list" | "compact">("grid");
@@ -81,10 +107,8 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     link: true,
   });
 
-  // Collections and tags derived from references
   const [tags, setTags] = useState<string[]>([]);
 
-  // Get current user permissions (only when we have the functions)
   const permissions = getPermissions ? getPermissions() : {
     canView: false,
     canEdit: false,
@@ -92,16 +116,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     canDeleteWorkspace: false,
   };
 
-  // Unwrap params
-  useEffect(() => {
-    const unwrapParams = async () => {
-      const resolvedParams = await params;
-      setWorkspaceId(resolvedParams.id);
-    };
-    unwrapParams();
-  }, [params]);
-
-  // Extract tags from references when they change
   useEffect(() => {
     if (!references.length) {
       setTags([]);
@@ -114,7 +128,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     setTags(Array.from(tagSet).slice(0, 8));
   }, [references]);
 
-  // Filter references based on active folder filter + search
   const filteredReferences = references.filter((ref: ReferenceData) => {
     const matchesSearch =
       searchQuery === "" ||
@@ -163,8 +176,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
       }[key];
       return meta || { label: key, icon: <FileText className="w-4 h-4" /> };
     }
-    
-    // Folder mode
+
     if (key === "uncategorized") {
       return { label: "Uncategorized", icon: <List className="w-4 h-4" /> };
     }
@@ -176,10 +188,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     if (groupBy === "none") return null;
 
     if (groupBy === "type") {
-       // Only group if we have enough items or user explicitly wants it?
-       // For now, respect the old logic + manual override.
-       // The old logic was: group if folder is active (no subType) and no search.
-       // Let's stick to the manual toggle now. 
        const groups = filteredReferences.reduce((acc, ref) => {
           const t = ref.reference_type || "document";
           if (!acc[t]) acc[t] = [];
@@ -206,11 +214,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
   }, [groupBy, filteredReferences, folders]);
 
   const compactGroupedReferences = useMemo(() => {
-    // Determine keys based on view mode logic (usually type for compact list)
-    // But if we are in compact mode AND grouped by folder, we should show folders.
-    // The current compact view logic relies on `REFERENCE_TYPE_ORDER`.
-    // Let's adapt it.
-    
     if (groupBy === "folder") {
         const groups = filteredReferences.reduce((acc, ref) => {
             const f = ref.folder_id || "uncategorized";
@@ -220,21 +223,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         }, {} as Record<string, ReferenceData[]>);
         return Object.entries(groups);
     }
-    
-    // Default (Type)
+
     const REFERENCE_TYPE_ORDER = ["image", "video", "audio", "document", "link"];
     return REFERENCE_TYPE_ORDER
         .map((type) => [type, filteredReferences.filter((ref) => (ref.reference_type || "document") === type)] as const)
         .filter(([, refs]) => refs.length > 0);
   }, [groupBy, filteredReferences]);
-  
-  const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode }> = {
-    image:    { label: "Images",    icon: <Image className="w-4 h-4" /> },
-    video:    { label: "Videos",    icon: <PlayCircle className="w-4 h-4" /> },
-    audio:    { label: "Audio",     icon: <Mic className="w-4 h-4" /> },
-    document: { label: "Documents", icon: <FileText className="w-4 h-4" /> },
-    link:     { label: "Links",     icon: <Link2 className="w-4 h-4" /> },
-  };
 
   const toggleTypeGroup = (type: string) => {
     setExpandedTypeGroups((prev) => ({
@@ -249,7 +243,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
     return "link";
   };
 
-  // Handlers
   const handleLike = useCallback(async () => {
     if (!workspace) return;
     showToast("Added to your Favorites 💖");
@@ -309,7 +302,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
 
   return (
     <div className="max-w-7xl mx-auto pb-20">
-      {/* Owner-only: Add Reference Modal */}
       {permissions.canEdit && workspace && (
         <AddReferenceModal
           isOpen={isAddModalOpen}
@@ -322,7 +314,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
-      {/* Edit Reference Modal */}
       {permissions.canEdit && workspace && editingReference && updateReference && (
         <EditReferenceModal
           isOpen={isEditModalOpen}
@@ -339,7 +330,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
-      {/* Manage Members Modal */}
       {permissions.canManageMembers && workspace && (
         <ManageMembersModal
           isOpen={isMembersModalOpen}
@@ -353,7 +343,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
-      {/* Create Folder Modal */}
       {isOwner && (
         <CreateFolderModal
           isOpen={isCreateFolderOpen}
@@ -365,7 +354,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
-      {/* Tag Manager Modal */}
       {workspace && (
         <TagManager
           isOpen={isTagManagerOpen}
@@ -377,7 +365,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
 
-      {/* Reference Details Drawer */}
       <ReferenceDetailsDrawer
         reference={selectedReference}
         workspaceId={workspace?.workspace_id || ""}
@@ -396,7 +383,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         canDelete={permissions.canEdit}
       />
 
-      {/* Delete Confirmation Dialog */}
       {isDeleteConfirmOpen && workspace && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)} />
@@ -443,7 +429,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </div>
       )}
 
-      {/* Header */}
       <WorkspaceHeader
         id={workspace?.workspace_id || ""}
         title={workspace?.workspace_title || ""}
@@ -468,9 +453,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         onManageTags={isOwner ? () => setIsTagManagerOpen(true) : undefined}
       />
 
-      {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 float-in delay-2">
-        {/* Sidebar */}
         <WorkspaceSidebar
           folders={folders}
           references={references}
@@ -489,9 +472,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
           }}
         />
 
-        {/* References Grid */}
         <main>
-          {/* Search and Filter Bar */}
           <div className="flex items-center justify-between mb-6 bg-white p-2 pr-6 rounded-full shadow-sm border border-stone-100">
             <div className="relative group w-full max-w-sm">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
@@ -520,7 +501,7 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
               <div className="w-px h-6 bg-stone-200 mx-1"></div>
               <div className="relative group">
                 <button className="text-sm font-bold text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-1">
-                  <ArrowDownUp className="w-4 h-4" /> 
+                  <ArrowDownUp className="w-4 h-4" />
                   <span className="capitalize hidden xl:inline">{sortBy === "newest" ? "Recent" : sortBy === "alphabetical" ? "A-Z" : sortBy.replace("-", " ")}</span>
                   <span className="xl:hidden">Sort</span>
                   <ChevronDown className="w-3 h-3 text-stone-400" />
@@ -559,14 +540,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
             </div>
           </div>
 
-          {/* References — compact abstraction mode */}
           {viewMode === "compact" ? (
             <div className="bg-white rounded-4xl border border-stone-100 overflow-hidden">
               {compactGroupedReferences.map(([key, refs], index) => {
-                // key might be a type or a folderId
                 const isExpanded = !!expandedTypeGroups[key];
                 const meta = getGroupingMeta(key, groupBy === "folder" ? "folder" : "type");
-                
+
                 return (
                   <section key={key} className={index !== 0 ? "border-t border-stone-100" : ""}>
                     <button
@@ -677,7 +656,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
             </div>
           )}
 
-          {/* Empty State */}
           {filteredReferences.length === 0 && (
             <div className="text-center py-16">
               <p className="text-stone-500 text-lg">
@@ -698,7 +676,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </main>
       </div>
 
-      {/* Owner-only: Floating Add Button */}
       {permissions.canEdit && (
         <button
           onClick={() => setIsAddModalOpen(true)}
@@ -708,7 +685,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
-      {/* Manage Members Button - Only for owners */}
       {permissions.canManageMembers && (
         <button
           onClick={() => setIsMembersModalOpen(true)}
@@ -719,13 +695,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
-      {/* Activity Log Button - For all members */}
       {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsActivityLogOpen(true)}
           className={`fixed bottom-8 ${
-            permissions.canManageMembers && permissions.canEdit ? 'right-46' : 
-            permissions.canManageMembers || permissions.canEdit ? 'right-28' : 
+            permissions.canManageMembers && permissions.canEdit ? 'right-46' :
+            permissions.canManageMembers || permissions.canEdit ? 'right-28' :
             'right-8'
           } w-14 h-14 bg-white rounded-full flex items-center justify-center text-stone-900 shadow-xl hover:scale-110 transition-all duration-300 z-30 border border-stone-100`}
           title="Activity Log"
@@ -734,13 +709,12 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
-      {/* Chat Button - Only for workspace members */}
       {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && (
         <button
           onClick={() => setIsChatOpen(true)}
           className={`fixed bottom-8 ${
-            permissions.canManageMembers && permissions.canEdit ? 'right-64' : 
-            permissions.canManageMembers || permissions.canEdit ? 'right-46' : 
+            permissions.canManageMembers && permissions.canEdit ? 'right-64' :
+            permissions.canManageMembers || permissions.canEdit ? 'right-46' :
             'right-28'
           } w-14 h-14 bg-[#1c1917] rounded-full flex items-center justify-center text-white shadow-xl hover:scale-110 transition-all duration-300 z-30`}
         >
@@ -748,7 +722,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
-      {/* Activity Log Drawer */}
       <ActivityLogDrawer
         isOpen={isActivityLogOpen}
         onClose={() => setIsActivityLogOpen(false)}
@@ -757,7 +730,6 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         members={members}
       />
 
-      {/* Chat Panel - Only for workspace members */}
       {members.some((m: WorkspaceMember) => m.profile_id === user?.id) && workspaceId && (
         <WorkspaceChat
           workspaceId={workspaceId}
@@ -767,17 +739,5 @@ function PublicWorkspaceContent({ params }: { params: Promise<{ id: string }> })
         />
       )}
     </div>
-  );
-}
-
-export default function PublicWorkspacePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  return (
-    <ToastProvider>
-      <PublicWorkspaceContent params={params} />
-    </ToastProvider>
   );
 }

@@ -16,9 +16,7 @@ type CookieToSet = {
 };
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request,
-  });
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +29,9 @@ export async function middleware(request: NextRequest) {
         setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
         },
       },
     }
@@ -42,19 +42,31 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+
   const isProtectedRoute =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/workspace") ||
-    pathname === "/profile/setup";
+    pathname === "/profile/setup" ||
+    pathname === "/profile/edit";
 
   const isAuthRoute = pathname === "/login" || pathname === "/signup";
+
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname.startsWith("/explore") ||
+    pathname.startsWith("/auth/confirm") ||
+    pathname.startsWith("/auth/callback");
 
   if (isProtectedRoute && !user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (isAuthRoute && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL(`/dashboard/${user.id}`, request.url));
+  }
+
+  if (isPublicRoute) {
+    return response;
   }
 
   return response;
@@ -62,6 +74,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|bmp|tiff)$).*)",
   ],
 };

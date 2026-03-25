@@ -2,7 +2,7 @@
  * Utility to detect file type from URL or file extension
  */
 
-export type ReferenceType = "audio" | "video" | "document" | "image";
+export type ReferenceType = "audio" | "video" | "document" | "image" | "link";
 
 const EXTENSION_MAP: Record<string, ReferenceType> = {
   // Images
@@ -50,7 +50,7 @@ const EXTENSION_MAP: Record<string, ReferenceType> = {
 /**
  * Get file type from a URL or filename
  * @param url - The URL or filename to check
- * @returns The detected file type, defaults to "document" if unknown
+ * @returns The detected file type, defaults to "link" if unknown
  */
 export function getFileTypeFromUrl(url: string): ReferenceType {
   try {
@@ -62,7 +62,7 @@ export function getFileTypeFromUrl(url: string): ReferenceType {
     const extensionMatch = pathname.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
     if (extensionMatch) {
       const ext = extensionMatch[1].toLowerCase();
-      return EXTENSION_MAP[ext] || "document";
+      return EXTENSION_MAP[ext] || "link";
     }
     
     // Check for common patterns in URLs
@@ -76,9 +76,9 @@ export function getFileTypeFromUrl(url: string): ReferenceType {
       return "image";
     }
     
-    return "document";
+    return "link";
   } catch {
-    return "document";
+    return "link";
   }
 }
 

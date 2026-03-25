@@ -5,6 +5,7 @@ import { X, Link as LinkIcon, Upload, Loader2, FileAudio, FileVideo, FileText, I
 import type { WorkspaceFolder } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { getFileTypeFromUrl, getFileTypeFromMime, ReferenceType } from "@/lib/fileType";
+import { detectPlatform } from "@/lib/platformDetect";
 
 const STORAGE_BUCKET = "Link-UpWorkpace";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
@@ -14,6 +15,7 @@ const TYPE_FALLBACK_THUMBNAILS: Record<ReferenceType, string> = {
   video: "/next.svg",
   audio: "/vercel.svg",
   document: "/file.svg",
+  link: "/file.svg",
 };
 
 interface AddReferenceModalProps {
@@ -35,6 +37,7 @@ const TYPE_ICONS: Record<ReferenceType, React.ReactNode> = {
   video: <FileVideo className="w-6 h-6" />,
   document: <FileText className="w-6 h-6" />,
   image: <Image className="w-6 h-6" />,
+  link: <LinkIcon className="w-6 h-6" />,
 };
 
 const TYPE_COLORS: Record<ReferenceType, string> = {
@@ -42,6 +45,7 @@ const TYPE_COLORS: Record<ReferenceType, string> = {
   video: "text-rose-500 bg-rose-50",
   document: "text-amber-500 bg-amber-50",
   image: "text-sky-500 bg-sky-50",
+  link: "text-stone-500 bg-stone-100",
 };
 
 export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], onReferenceAdded }: AddReferenceModalProps) {
@@ -52,6 +56,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
   const [previewUrl, setPreviewUrl] = useState<string>(""); 
   const [fileType, setFileType] = useState<ReferenceType>("image");
   const [loading, setLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Tags state
@@ -62,6 +67,15 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
   const [selectedFolderId, setSelectedFolderId] = useState<string>("");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetFileState = () => {
+    setSelectedFile(null);
+    setPreviewUrl("");
+    setFileType("image");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   // Fetch workspace tags when modal opens
   useEffect(() => {
@@ -132,8 +146,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       // Check file size limit
       if (file.size > MAX_FILE_SIZE) {
         setError(`File is too large. Maximum size is 10MB. Your file is ${formatFileSize(file.size)}.`);
-        setSelectedFile(null);
-        setPreviewUrl("");
+        resetFileState();
         return;
       }
       
@@ -158,12 +171,178 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
     }
   };
 
+  const handleModalClose = () => {
+    setError(null);
+    resetFileState();
+    onClose();
+  };
+
   const handleSubmit = async () => {
     if (activeTab === 'upload' && !selectedFile) return;
     if (activeTab === 'link' && !linkUrl) return;
 
     if (!workspaceId) {
       setError("Workspace ID is missing");
+      return;
+    }
+
+    if (activeTab === 'link') {
+      const referenceUrl = linkUrl.trim();
+      setError(null);
+
+      // 1. Validate URL and current user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const currentUserId = authUser?.id ?? null;
+      const wsId = workspaceId;
+
+      if (!referenceUrl || !currentUserId) {
+        setError("Please enter a valid URL and make sure you're logged in.");
+        return;
+      }
+
+      // 2. Start importing state
+      setIsImporting(true);
+
+      // 3. Detect platform and file type
+      const info = detectPlatform(referenceUrl);
+      let type = getFileTypeFromUrl(referenceUrl);
+      if (!type) type = "link";
+
+      // 4. Insert placeholder row first
+      const placeholderTitle = (() => {
+        try {
+          return new URL(referenceUrl).hostname;
+        } catch {
+          return "Importing…";
+        }
+      })();
+
+      const placeholderBase = {
+        workspace_id: wsId,
+        uploaded_by_profile_id: currentUserId,
+        reference_title: placeholderTitle,
+        reference_type: type,
+        reference_url: referenceUrl,
+        reference_metadata: {
+          source_url: referenceUrl,
+          platform: info.platform,
+        },
+        ...(selectedFolderId ? { folder_id: selectedFolderId } : {}),
+      };
+
+      let statusColumnSupported = true;
+      let placeholderRef: any = null;
+      let placeholderError: any = null;
+
+      {
+        const attempt = await supabase
+          .from("references")
+          .insert({
+            ...placeholderBase,
+            reference_status: "processing",
+          })
+          .select()
+          .single();
+
+        placeholderRef = attempt.data;
+        placeholderError = attempt.error;
+      }
+
+      if (placeholderError?.message?.toLowerCase().includes("reference_status")) {
+        statusColumnSupported = false;
+        const fallbackAttempt = await supabase
+          .from("references")
+          .insert(placeholderBase)
+          .select()
+          .single();
+        placeholderRef = fallbackAttempt.data;
+        placeholderError = fallbackAttempt.error;
+      }
+
+      // 5. Handle placeholder insert errors
+      if (placeholderError || !placeholderRef) {
+        setError(placeholderError?.message || "Failed to start import.");
+        setIsImporting(false);
+        return;
+      }
+
+      // 6. Show card immediately in UI
+      onReferenceAdded?.(placeholderRef);
+
+      // 7. Free user immediately and close modal
+      setTitle("");
+      setLinkUrl("");
+      resetFileState();
+      setSelectedTags([]);
+      setSelectedFolderId("");
+      setIsImporting(false);
+      onClose();
+
+      // 8. Background work (not awaited)
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const response = await fetch('/api/import-url', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+            },
+            body: JSON.stringify({ url: referenceUrl, type, platform: info.platform }),
+          });
+
+          if (!response.ok) {
+            let errorMessage = `Import failed (${response.status})`;
+            try {
+              const errorData = await response.json();
+              if (errorData?.error) errorMessage = errorData.error;
+            } catch {
+              // no-op
+            }
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+          if (data.error) throw new Error(data.error);
+
+          const finalType = data.actualType ?? data.type ?? type;
+          if (finalType !== 'link' && !data.publicUrl) throw new Error('No storage URL returned from import');
+          const finalUrl = data.mode === 'platform'
+            ? ((finalType === 'image' || finalType === 'video') && data.publicUrl ? data.publicUrl : (data.sourceUrl || referenceUrl))
+            : (data.publicUrl || referenceUrl);
+
+          const readyUpdate: Record<string, any> = {
+            reference_url: finalUrl,
+            reference_title: data.fileName || data.title || placeholderTitle,
+            reference_type: finalType,
+            reference_metadata: {
+              source_url: referenceUrl,
+              ...(data.metadata || {}),
+              thumbnailStoredUrl: data.publicUrl || null,
+            },
+          };
+
+          if (statusColumnSupported) {
+            readyUpdate.reference_status = 'ready';
+          }
+
+          await supabase.from('references').update(readyUpdate).eq('reference_id', placeholderRef.reference_id);
+        } catch (err) {
+          const failedUpdate: Record<string, any> = {
+            reference_url: referenceUrl,
+            reference_type: 'link',
+            reference_title: (() => { try { return new URL(referenceUrl).hostname; } catch { return 'Import failed'; } })(),
+          };
+
+          if (statusColumnSupported) {
+            failedUpdate.reference_status = 'failed';
+          }
+
+          await supabase.from('references').update(failedUpdate).eq('reference_id', placeholderRef.reference_id);
+          console.error('Background import failed:', err);
+        }
+      })();
+
       return;
     }
 
@@ -220,44 +399,6 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
           resolvedTitle = selectedFile.name.replace(/\.[^.]+$/, "");
         }
       }
-      // Handle URL import
-      else if (activeTab === 'link' && linkUrl) {
-        finalType = getFileTypeFromUrl(linkUrl);
-
-        // Get session for API call
-        const { data: { session } } = await supabase.auth.getSession();
-
-        // Call import API to download and re-upload to our storage
-        const response = await fetch("/api/import-url", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(session?.access_token
-              ? { Authorization: `Bearer ${session.access_token}` }
-              : {}),
-          },
-          body: JSON.stringify({ url: linkUrl, type: finalType }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to import file");
-        }
-
-        const importData = await response.json();
-        finalUrl = importData.publicUrl;
-        finalType = importData.type || finalType;
-        metadata = {
-          ...(importData.metadata || {}),
-          source_url: linkUrl,
-          thumbnail: importData.metadata?.thumbnail || TYPE_FALLBACK_THUMBNAILS[finalType],
-        };
-
-        if (!resolvedTitle) {
-          resolvedTitle = (importData.title || importData.fileName || "Imported reference").replace(/\.[^.]+$/, "");
-        }
-      }
-
       if (!resolvedTitle) {
         resolvedTitle = "Untitled Reference";
       }
@@ -332,9 +473,7 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
       // Reset and Close
       setTitle("");
       setLinkUrl("");
-      setPreviewUrl("");
-      setSelectedFile(null);
-      setFileType("image");
+      resetFileState();
       setSelectedTags([]);
       setSelectedFolderId("");
       onClose();
@@ -350,12 +489,12 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" onClick={handleModalClose}></div>
       <div className="bg-white w-full max-w-lg rounded-4xl p-8 relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
         
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-stone-900">Add New Reference</h2>
-          <button onClick={onClose} className="text-stone-400 hover:text-stone-900"><X className="w-6 h-6" /></button>
+          <button onClick={handleModalClose} className="text-stone-400 hover:text-stone-900"><X className="w-6 h-6" /></button>
         </div>
 
         {/* Error Message */}
@@ -393,6 +532,9 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
                   type="file" 
                   className="hidden" 
                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md" 
+                  onClick={(e) => {
+                    e.currentTarget.value = "";
+                  }}
                   onChange={handleFileChange} 
                 />
                 
@@ -532,13 +674,13 @@ export function AddReferenceModal({ isOpen, onClose, workspaceId, folders = [], 
           )}
 
           <div className="flex gap-3 pt-2">
-            <button disabled={loading} onClick={onClose} className="flex-1 py-3.5 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50 transition-colors">Cancel</button>
+            <button disabled={loading || isImporting} onClick={handleModalClose} className="flex-1 py-3.5 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50 transition-colors">Cancel</button>
             <button 
-              disabled={loading || (activeTab === 'upload' && !selectedFile) || (activeTab === 'link' && !linkUrl)} 
+              disabled={loading || isImporting || (activeTab === 'upload' && !selectedFile) || (activeTab === 'link' && !linkUrl)} 
               onClick={handleSubmit} 
               className="flex-1 py-3.5 rounded-xl bg-[#1c1917] text-white font-bold hover:bg-stone-800 transition-colors shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
+              {loading || isImporting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {activeTab === 'link' ? 'Importing...' : 'Uploading...'}

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ReferenceType } from "@/lib/fileType";
+import { ReferenceType, getFileTypeFromUrl } from "@/lib/fileType";
 
 const STORAGE_BUCKET = "Link-UpWorkpace";
 
 // Create a Supabase client with service role for server-side operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const EXT_MAP: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -49,8 +50,68 @@ function extractMeta(html: string) {
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const title = getMeta("og:title") || getMeta("twitter:title") || titleMatch?.[1]?.trim() || null;
   const image = getMeta("og:image") || getMeta("twitter:image") || null;
+  const video = getMeta("og:video") || getMeta("og:video:url") || getMeta("og:video:secure_url") || null;
+  const audio = getMeta("og:audio") || getMeta("og:audio:url") || getMeta("og:audio:secure_url") || null;
+  const twitterPlayer = getMeta("twitter:player") || null;
+  const linkImageMatch = html.match(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["'][^>]*>/i);
+  const linkImage = linkImageMatch?.[1]?.trim() || null;
+
+  let jsonLdContentUrl: string | null = null;
+  const jsonLdMatches = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const match of jsonLdMatches) {
+    const block = match[1];
+    const contentUrlMatch = block.match(/"contentUrl"\s*:\s*"([^"]+)"/i);
+    if (contentUrlMatch?.[1]) {
+      jsonLdContentUrl = contentUrlMatch[1];
+      break;
+    }
+  }
+
   const description = getMeta("description") || getMeta("og:description") || null;
-  return { title, image, description };
+  return { title, image, video, audio, twitterPlayer, linkImage, jsonLdContentUrl, description };
+}
+
+function extractMediaCandidatesFromHtml(html: string): string[] {
+  const candidates: string[] = [];
+
+  const videoSrcMatches = html.matchAll(/<video[^>]+src=["']([^"']+)["'][^>]*>/gi);
+  for (const match of videoSrcMatches) {
+    if (match[1]) candidates.push(match[1]);
+  }
+
+  const sourceTagMatches = html.matchAll(/<source[^>]+src=["']([^"']+)["'][^>]*>/gi);
+  for (const match of sourceTagMatches) {
+    if (match[1]) candidates.push(match[1]);
+  }
+
+  const imgSrcMatches = html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi);
+  for (const match of imgSrcMatches) {
+    if (match[1]) candidates.push(match[1]);
+  }
+
+  const srcSetMatches = html.matchAll(/<img[^>]+srcset=["']([^"']+)["'][^>]*>/gi);
+  for (const match of srcSetMatches) {
+    const srcSet = match[1] || "";
+    srcSet
+      .split(",")
+      .map((part) => part.trim().split(" ")[0])
+      .filter(Boolean)
+      .forEach((u) => candidates.push(u));
+  }
+
+  return candidates;
+}
+
+function extractMediaCandidatesFromUrl(rawUrl: string): string[] {
+  try {
+    const url = new URL(rawUrl);
+    const keys = ["imgurl", "mediaurl", "url", "u"];
+    return keys
+      .map((key) => url.searchParams.get(key))
+      .filter((value): value is string => !!value && /^https?:\/\//i.test(value));
+  } catch {
+    return [];
+  }
 }
 
 function toAbsoluteUrl(candidate: string, baseUrl: string): string {
@@ -96,6 +157,14 @@ async function uploadPreviewFromUrl(params: {
   return data.publicUrl;
 }
 
+function inferTypeFromAssetUrl(assetUrl: string, fallback: ReferenceType): ReferenceType {
+  const fromUrl = getFileTypeFromUrl(assetUrl);
+  if (fromUrl === "image" || fromUrl === "video" || fromUrl === "audio" || fromUrl === "document") {
+    return fromUrl;
+  }
+  return fallback;
+}
+
 function fallbackPreviewByType(type: ReferenceType) {
   if (type === "image") return "/window.svg";
   if (type === "video") return "/next.svg";
@@ -115,13 +184,24 @@ export async function POST(request: NextRequest) {
     const authHeader = request.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
 
-    // Create supabase client (use service key for storage operations)
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Create clients:
+    // - `authClient` verifies user token
+    // - `storageClient` uploads with service role when available, otherwise user auth token
+    const authClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    const hasServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const storageClient = hasServiceRole
+      ? createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+      : createClient(supabaseUrl, supabaseAnonKey, {
+          global: {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          },
+        });
 
     // Verify user if token provided
     let userId: string | null = null;
     if (token) {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
+      const { data: { user } } = await authClient.auth.getUser(token);
       if (user) {
         userId = user.id;
       }
@@ -148,30 +228,107 @@ export async function POST(request: NextRequest) {
     let metadata: Record<string, any> = {};
     let extractedTitle: string | null = null;
     let extractedThumbnail: string | null = null;
+    let mode: "direct" | "platform" = "direct";
+    let sourceUrl: string = url;
+    let effectiveContentType = contentType;
+    let actualType = inferredType;
 
     if (contentType.includes("text/html")) {
+      mode = "platform";
       const html = await response.text();
       const meta = extractMeta(html);
       extractedTitle = meta.title;
       metadata.description = meta.description;
+      const urlCandidates = extractMediaCandidatesFromUrl(url);
+      const htmlCandidates = extractMediaCandidatesFromHtml(html);
+      const candidateMediaUrls = [
+        ...urlCandidates,
+        meta.video,
+        meta.audio,
+        meta.image,
+        meta.linkImage,
+        meta.jsonLdContentUrl,
+        meta.twitterPlayer,
+        ...htmlCandidates,
+      ].filter(Boolean) as string[];
 
-      if (meta.image) {
+      let mediaDownloaded = false;
+      for (const candidate of candidateMediaUrls) {
         try {
-          const absolutePreviewUrl = toAbsoluteUrl(meta.image, url);
-          const uploadedPreview = await uploadPreviewFromUrl({
-            supabase,
-            imageUrl: absolutePreviewUrl,
-            baseType: inferredType,
+          const absoluteUrl = toAbsoluteUrl(candidate, url);
+          const mediaResponse = await fetch(absoluteUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              Referer: url,
+            },
           });
-          extractedThumbnail = uploadedPreview || absolutePreviewUrl;
+
+          if (!mediaResponse.ok) continue;
+
+          const mediaType = mediaResponse.headers.get("content-type") || "application/octet-stream";
+          if (mediaType.includes("text/html")) continue;
+
+          blob = await mediaResponse.blob();
+          effectiveContentType = mediaType;
+          sourceUrl = absoluteUrl;
+          actualType = inferTypeFromContentType(mediaType, inferTypeFromAssetUrl(absoluteUrl, inferredType));
+
+          if (meta.image) {
+            try {
+              const absolutePreviewUrl = toAbsoluteUrl(meta.image, url);
+              const uploadedPreview = await uploadPreviewFromUrl({
+                supabase: storageClient,
+                imageUrl: absolutePreviewUrl,
+                baseType: actualType,
+              });
+              extractedThumbnail = uploadedPreview || absolutePreviewUrl;
+            } catch {
+              extractedThumbnail = null;
+            }
+          }
+
+          mediaDownloaded = true;
+          break;
         } catch {
-          extractedThumbnail = null;
+          continue;
         }
       }
 
-      blob = new Blob([html], { type: "text/html" });
+      if (!mediaDownloaded) {
+        const fallbackHost = (() => {
+          try {
+            return new URL(url).hostname;
+          } catch {
+            return "Imported Link";
+          }
+        })();
+
+        return NextResponse.json(
+          {
+            success: true,
+            mode: "platform",
+            sourceUrl: url,
+            publicUrl: null,
+            fileName: extractedTitle || fallbackHost,
+            type: "link",
+            actualType: "link",
+            contentType,
+            title: extractedTitle || null,
+            metadata: {
+              ...metadata,
+              source_url: url,
+              source: fallbackHost,
+              thumbnail: fallbackPreviewByType("link"),
+              import_note: "No downloadable media found; saved as link",
+            },
+          },
+          { status: 200 }
+        );
+      }
     } else {
       blob = await response.blob();
+      sourceUrl = url;
+      actualType = inferredType;
     }
 
     // Generate filename from URL
@@ -195,7 +352,7 @@ export async function POST(request: NextRequest) {
           "audio/wav": ".wav",
           "application/pdf": ".pdf",
         };
-        const ext = extMap[contentType] || "";
+        const ext = extMap[effectiveContentType] || "";
         fileName = `imported_${Date.now()}${ext}`;
       }
     } catch {
@@ -204,13 +361,13 @@ export async function POST(request: NextRequest) {
 
     // Build storage path
     const safeFileName = sanitizeFileName(fileName);
-    const storagePath = `imports/${inferredType}/${Date.now()}_${safeFileName}`;
+    const storagePath = `imports/${actualType}/${Date.now()}_${safeFileName}`;
 
     // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await storageClient.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, blob, {
-        contentType,
+        contentType: effectiveContentType,
         upsert: false,
       });
 
@@ -223,7 +380,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = storageClient.storage
       .from(STORAGE_BUCKET)
       .getPublicUrl(storagePath);
 
@@ -236,19 +393,22 @@ export async function POST(request: NextRequest) {
     })();
 
     if (!extractedThumbnail) {
-      extractedThumbnail = inferredType === "image" ? urlData.publicUrl : fallbackPreviewByType(inferredType);
+      extractedThumbnail = actualType === "image" ? urlData.publicUrl : fallbackPreviewByType(actualType);
     }
 
     return NextResponse.json({
       success: true,
+      mode,
+      sourceUrl,
       publicUrl: urlData.publicUrl,
       fileName,
-      type: inferredType,
-      contentType,
+      type: actualType,
+      actualType,
+      contentType: effectiveContentType,
       title: extractedTitle || null,
       metadata: {
         ...metadata,
-        source_url: url,
+        source_url: sourceUrl,
         source: sourceHost,
         thumbnail: extractedThumbnail,
       },

@@ -2,17 +2,23 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from './useAuth';
 import { Notification } from '@/types';
+import { useNotificationsStore } from '@/lib/stores/notificationsStore';
 
 export function useNotifications() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const {
+    notifications,
+    unreadCount,
+    setNotifications,
+    addNotification,
+    markRead,
+    markAllRead,
+  } = useNotificationsStore();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) {
       setNotifications([]);
-      setUnreadCount(0);
       setLoading(false);
       return;
     }
@@ -34,7 +40,6 @@ export function useNotifications() {
         }));
 
         setNotifications(formattedData);
-        setUnreadCount(formattedData.filter(n => !n.notification_is_read).length); // was is_read
       } catch (err) {
         console.error('Error fetching notifications:', err);
       } finally {
@@ -57,26 +62,20 @@ export function useNotifications() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newNotif = payload.new as Notification;
-            setNotifications(prev => [newNotif, ...prev]);
-            if (!newNotif.notification_is_read) {
-              setUnreadCount(prev => prev + 1);
-            }
+            addNotification(newNotif);
           } else if (payload.eventType === 'UPDATE') {
             const updatedNotif = payload.new as Notification;
-            setNotifications(prev => {
-              const updated = prev.map(n => 
+            const current = useNotificationsStore.getState().notifications;
+            setNotifications(
+              current.map((n) =>
                 n.notification_id === updatedNotif.notification_id ? updatedNotif : n
-              );
-              // Recalculate unread count
-              setUnreadCount(updated.filter(n => !n.notification_is_read).length);
-              return updated;
-            });
+              )
+            );
           } else if (payload.eventType === 'DELETE') {
-            setNotifications(prev => {
-              const filtered = prev.filter(n => n.notification_id !== payload.old.notification_id);
-              setUnreadCount(filtered.filter(n => !n.notification_is_read).length);
-              return filtered;
-            });
+            const current = useNotificationsStore.getState().notifications;
+            setNotifications(
+              current.filter((n) => n.notification_id !== payload.old.notification_id)
+            );
           }
         }
       )
@@ -89,15 +88,12 @@ export function useNotifications() {
         supabase.removeChannel(channel);
       }
     };
-  }, [user]);
+  }, [user, addNotification, setNotifications]);
 
   const markAsRead = async (notificationId: string) => {
     try {
       // Optimistic update
-      setNotifications(prev => prev.map(n => 
-        n.notification_id === notificationId ? { ...n, notification_is_read: true } : n
-      ));
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      markRead(notificationId);
 
       const { error } = await supabase
         .from('notifications')
@@ -116,8 +112,7 @@ export function useNotifications() {
       if (unreadIds.length === 0) return;
 
       // Optimistic update
-      setNotifications(prev => prev.map(n => ({ ...n, notification_is_read: true })));
-      setUnreadCount(0);
+      markAllRead();
 
       const { error } = await supabase
         .from('notifications')
@@ -132,7 +127,8 @@ export function useNotifications() {
 
   const deleteNotification = async (notificationId: string) => {
     try {
-      setNotifications(prev => prev.filter(n => n.notification_id !== notificationId));
+      const current = useNotificationsStore.getState().notifications;
+      setNotifications(current.filter(n => n.notification_id !== notificationId));
       const { error } = await supabase
         .from('notifications')
         .delete()
@@ -150,7 +146,8 @@ export function useNotifications() {
       if (readIds.length === 0) return;
 
       // Optimistic update
-      setNotifications(prev => prev.filter(n => !n.notification_is_read));
+      const current = useNotificationsStore.getState().notifications;
+      setNotifications(current.filter(n => !n.notification_is_read));
 
       const { error } = await supabase
         .from('notifications')

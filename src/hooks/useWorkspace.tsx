@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { WorkspaceMember, MemberRole, MemberPermissions, WorkspaceFolder } from "@/types";
+import { useWorkspaceStore } from "@/lib/stores/workspaceStore";
+import { useReferencesStore } from "@/lib/stores/referencesStore";
 
 interface WorkspaceData {
   workspace_id: string;
@@ -19,6 +21,7 @@ interface ReferenceData {
   reference_title: string;
   reference_url: string;
   reference_type: string;
+  reference_status?: 'processing' | 'ready' | 'failed';
   reference_metadata: {
     thumbnail?: string;
     source?: string;
@@ -39,11 +42,24 @@ interface WorkspaceOwner {
 
 export function useWorkspace(workspaceId: string) {
   const { user } = useAuth();
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
+  const {
+    workspace,
+    members,
+    folders,
+    setWorkspace,
+    setMembers,
+    setFolders,
+    setUserRole,
+    reset,
+  } = useWorkspaceStore();
+  const {
+    references,
+    setReferences,
+    addReference: addReferenceState,
+    updateReference: updateReferenceState,
+    removeReference,
+  } = useReferencesStore();
   const [owner, setOwner] = useState<WorkspaceOwner | null>(null);
-  const [references, setReferences] = useState<ReferenceData[]>([]);
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [folders, setFolders] = useState<WorkspaceFolder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -237,6 +253,11 @@ export function useWorkspace(workspaceId: string) {
       const allMembers = [ownerMember, ...membersWithProfiles.filter(m => m.profile_id !== workspaceData.workspace_owner_id)];
       setMembers(allMembers);
 
+      const role = user
+        ? (workspaceData.workspace_owner_id === user.id ? 'owner' : allMembers.some(m => m.profile_id === user.id) ? 'viewer' : null)
+        : null;
+      setUserRole(role as 'owner' | 'editor' | 'viewer' | null);
+
     } catch (err: any) {
       console.error('Error fetching workspace:', err);
       setError(err.message || 'Failed to load workspace');
@@ -267,7 +288,7 @@ export function useWorkspace(workspaceId: string) {
       if (error) throw error;
 
       // Update local state
-      setReferences(prev => [data, ...prev]);
+      addReferenceState(data as any);
 
       // Notify all other workspace members about the new reference
       const otherMembers = members.filter(m => m.profile_id !== user.id);
@@ -313,7 +334,7 @@ export function useWorkspace(workspaceId: string) {
       if (error) throw error;
 
       // Update local state
-      setReferences(prev => prev.filter(ref => ref.reference_id !== referenceId));
+      removeReference(referenceId);
 
     } catch (err: any) {
       console.error('Error deleting reference:', err);
@@ -348,17 +369,11 @@ export function useWorkspace(workspaceId: string) {
       if (error) throw error;
 
       // Update local state - preserve existing tags since they're managed separately
-      setReferences(prev => 
-        prev.map(ref => {
-          if (ref.reference_id === referenceId) {
-            return {
-              ...data,
-              tags: ref.tags || [] // Preserve existing tags
-            };
-          }
-          return ref;
-        })
-      );
+      const existing = references.find((ref) => ref.reference_id === referenceId);
+      updateReferenceState(referenceId, {
+        ...(data as any),
+        tags: existing?.tags || [],
+      } as any);
 
       return data;
 
@@ -507,7 +522,7 @@ export function useWorkspace(workspaceId: string) {
       }
 
       // Update local state
-      setMembers(prev => prev.filter(m => m.profile_id !== profileId));
+      setMembers(members.filter(m => m.profile_id !== profileId));
     } catch (err: any) {
       console.error('Error removing member:', err);
       throw err;
@@ -556,9 +571,9 @@ export function useWorkspace(workspaceId: string) {
       .single();
 
     if (error) throw error;
-    setFolders(prev => [...prev, data]);
+    setFolders([...(folders as any), data]);
     return data;
-  }, [user, workspaceId, getPermissions]);
+  }, [user, workspaceId, getPermissions, folders, setFolders]);
 
   // Delete a folder (references become uncategorized)
   const deleteFolder = useCallback(async (folderId: string): Promise<void> => {
@@ -579,9 +594,9 @@ export function useWorkspace(workspaceId: string) {
 
     if (error) throw error;
 
-    setFolders(prev => prev.filter(f => f.folder_id !== folderId));
-    setReferences(prev => prev.map(r => r.folder_id === folderId ? { ...r, folder_id: null } : r));
-  }, [user, getPermissions]);
+    setFolders(folders.filter(f => f.folder_id !== folderId));
+    setReferences(references.map(r => r.folder_id === folderId ? { ...r, folder_id: null } : r));
+  }, [user, getPermissions, folders, references, setFolders, setReferences]);
 
   // Move a reference into a folder (or remove from folder)
   const moveReference = useCallback(async (referenceId: string, folderId: string | null): Promise<void> => {
@@ -596,9 +611,7 @@ export function useWorkspace(workspaceId: string) {
 
     if (error) throw error;
 
-    setReferences(prev =>
-      prev.map(r => r.reference_id === referenceId ? { ...r, folder_id: folderId } : r)
-    );
+    updateReferenceState(referenceId, { folder_id: folderId });
   }, [user, getPermissions]);
 
   // Delete entire workspace (owner only)
@@ -673,21 +686,16 @@ export function useWorkspace(workspaceId: string) {
         }, 
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setReferences(prev => [payload.new as ReferenceData, ...prev]);
+            addReferenceState(payload.new as any);
           } else if (payload.eventType === 'DELETE') {
-            setReferences(prev => prev.filter(ref => ref.reference_id !== payload.old.reference_id));
+            removeReference(payload.old.reference_id as string);
           } else if (payload.eventType === 'UPDATE') {
-            setReferences(prev => 
-              prev.map(ref => {
-                if (ref.reference_id === payload.new.reference_id) {
-                  return {
-                    ...(payload.new as ReferenceData),
-                    tags: ref.tags || [] // Preserve existing tags
-                  };
-                }
-                return ref;
-              })
-            );
+            const current = useReferencesStore.getState().references as any[];
+            const existing = current.find((ref) => ref.reference_id === payload.new.reference_id);
+            updateReferenceState(payload.new.reference_id as string, {
+              ...(payload.new as any),
+              tags: existing?.tags || [],
+            });
           }
         }
       )
@@ -727,11 +735,26 @@ export function useWorkspace(workspaceId: string) {
       )
       .subscribe();
 
+    const refChannel = supabase
+      .channel(`references-${workspaceId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'references',
+        filter: `workspace_id=eq.${workspaceId}`,
+      }, (payload) => {
+        updateReferenceState(payload.new.reference_id as string, payload.new as any);
+      })
+      .subscribe();
+
     return () => {
       // Properly remove all channels
       supabase.removeChannel(referencesChannel);
       supabase.removeChannel(workspaceChannel);
       supabase.removeChannel(membersChannel);
+      supabase.removeChannel(refChannel);
+      reset();
+      setReferences([]);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, isValidWorkspaceId]);

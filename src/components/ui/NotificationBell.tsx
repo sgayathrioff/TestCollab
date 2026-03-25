@@ -1,6 +1,7 @@
 "use client";
 
 import { useNotifications } from "@/hooks/useNotifications";
+import { useNotificationsStore } from "@/lib/stores/notificationsStore";
 import { Bell, X, UserPlus, UserMinus, FileText, Users, RefreshCw } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -29,7 +30,8 @@ const typeConfig: Record<Notification['notification_type'], { icon: React.ReactN
 };
 
 export function NotificationBell() {
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead } = useNotifications();
+  const { loading, markAsRead, markAllAsRead, deleteNotification, deleteAllRead } = useNotifications();
+  const { notifications, unreadCount } = useNotificationsStore();
   const router = useRouter();
 
   const handleNotificationClick = (notification: Notification) => {

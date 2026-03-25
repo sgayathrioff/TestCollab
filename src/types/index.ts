@@ -63,10 +63,14 @@ export interface ReferenceData {
   reference_title: string;
   reference_url: string;
   reference_type: string;
+  reference_status?: 'processing' | 'ready' | 'failed';
   reference_metadata: {
     thumbnail?: string;
     source?: string;
     colorPalette?: string[];
+    source_url?: string;
+    platform?: string;
+    thumbnailStoredUrl?: string | null;
   };
   workspace_id: string;
   uploaded_by_profile_id: string;

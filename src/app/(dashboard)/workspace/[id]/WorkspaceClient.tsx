@@ -83,6 +83,9 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [categoryMenuMemberId, setCategoryMenuMemberId] = useState<string | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [targetMemberId, setTargetMemberId] = useState<string | null>(null);
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
 
   const permissions = getPermissions ? getPermissions() : {
     canView: false,
@@ -330,15 +333,14 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
 
   const handleMemberCategoryChange = async (memberId: string, selected: string) => {
     try {
-      let nextCategory: string | null = selected;
-
       if (selected === "__custom__") {
-        const custom = window.prompt("Enter custom category");
-        if (!custom || !custom.trim()) return;
-        nextCategory = custom.trim();
+        setTargetMemberId(memberId);
+        setIsCategoryModalOpen(true);
+        setCustomCategoryInput("");
+        return;
       }
 
-      await updateMemberCategory?.(memberId, nextCategory === "Unassigned" ? null : nextCategory);
+      await updateMemberCategory?.(memberId, selected === "Unassigned" ? null : selected);
       setCategoryMenuMemberId(null);
       showToast("Member category updated");
     } catch (err: any) {
@@ -411,114 +413,120 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         />
 
         <main>
-          <div className="bg-white rounded-4xl border border-stone-100 p-5 mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <div className="relative flex-1 max-w-xl">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search references"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400/60"
-                />
-              </div>
+          {/* Search Bar - Dedicated Row for Maximum Width */}
+          <div className="bg-white rounded-4xl border border-stone-100 p-5 mb-4 shadow-sm float-in">
+            <div className="relative w-full group">
+              <Search className="w-5 h-5 text-stone-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-lime-600 transition-colors" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search references by name, tag, or collection..."
+                className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-stone-200 text-base font-medium placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-lime-400/60 focus:border-lime-200 transition-all bg-stone-50/30 font-display"
+              />
+            </div>
+          </div>
+
+          {/* Action Toolbar - Compact and Clean */}
+          <div className="bg-white rounded-3xl border border-stone-100 p-3 mb-8 flex items-center justify-between gap-4 float-in delay-1 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-2">
+              {permissions.canEdit && (
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-5 py-2.5 rounded-2xl bg-[#1c1917] text-white font-bold text-sm flex items-center gap-2 shrink-0 hover:bg-black transition-colors shadow-md"
+                >
+                  <Plus className="w-4 h-4" /> Add Reference
+                </button>
+              )}
+
+              <div className="w-px h-8 bg-stone-100 mx-1 shrink-0" />
+
+
+
+              <button
+                onClick={() => setIsMembersModalOpen(true)}
+                className="px-3 py-2.5 rounded-2xl border border-stone-200 text-stone-700 hover:bg-stone-50 transition-colors bg-white shadow-sm flex items-center justify-center"
+                title="Manage members"
+              >
+                <Users className="w-4.5 h-4.5" />
+              </button>
+
+              <button
+                onClick={() => setIsActivityLogOpen(true)}
+                className="px-3 py-2.5 rounded-2xl border border-stone-200 text-stone-700 hover:bg-stone-50 transition-colors bg-white shadow-sm flex items-center justify-center"
+                title="Activity log"
+              >
+                <Activity className="w-4.5 h-4.5" />
+              </button>
             </div>
 
-            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "grid" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "list" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
-              >
-                <List className="w-4 h-4" />
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="w-px h-8 bg-stone-100 mx-1 shrink-0" />
 
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={groupBy}
                   onChange={(e) => setGroupBy(e.target.value as any)}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                  className="appearance-none pl-3 pr-8 py-2.5 rounded-2xl border border-stone-200 text-sm font-semibold text-stone-700 bg-white hover:border-stone-300 transition-colors focus:outline-none focus:ring-2 focus:ring-lime-400/20"
                 >
                   <option value="type">Group: Type</option>
                   <option value="folder">Group: Folder</option>
                   <option value="tag">Group: Tag</option>
                   <option value="none">Group: None</option>
                 </select>
-                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
-              <div className="relative">
+              <div className="relative shrink-0">
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                  className="appearance-none pl-3 pr-8 py-2.5 rounded-2xl border border-stone-200 text-sm font-semibold text-stone-700 bg-white hover:border-stone-300 transition-colors focus:outline-none focus:ring-2 focus:ring-lime-400/20"
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
                   <option value="alphabetical">A-Z</option>
                   <option value="reverse-alphabetical">Z-A</option>
                 </select>
-                <ArrowDownUp className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <ArrowDownUp className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
+              <div className="w-px h-8 bg-stone-100 mx-1 shrink-0" />
 
-
-              {permissions.canEdit && (
+              <div className="flex items-center gap-1.5 p-1 bg-stone-50 rounded-2xl border border-stone-100">
                 <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-[#1c1917] text-white font-bold text-sm flex items-center gap-2"
+                  onClick={() => setViewMode("grid")}
+                  className={`p-2 rounded-xl transition-all ${viewMode === "grid" ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "text-stone-400 hover:text-stone-600"}`}
+                  title="Grid view"
                 >
-                  <Plus className="w-4 h-4" /> Add
+                  <LayoutGrid className="w-4.5 h-4.5" />
                 </button>
-              )}
-
-              <button
-                onClick={() => setIsChatOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
-                title="Open chat"
-              >
-                <MessageCircle className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => setIsMembersModalOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
-                title="Manage members"
-              >
-                <Users className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => setIsActivityLogOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
-                title="Activity log"
-              >
-                <Activity className="w-4 h-4" />
-              </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`p-2 rounded-xl transition-all ${viewMode === "list" ? "bg-white text-stone-900 shadow-sm border border-stone-200" : "text-stone-400 hover:text-stone-600"}`}
+                  title="List view"
+                >
+                  <List className="w-4.5 h-4.5" />
+                </button>
+              </div>
             </div>
           </div>
 
           {filteredReferences.length === 0 ? (
-            <div className="bg-white rounded-4xl border border-dashed border-stone-200 p-12 text-center text-stone-500">
-              No references found.
+            <div className="bg-white rounded-4xl border border-dashed border-stone-200 p-12 text-center text-stone-500 float-in delay-2">
+              No references found match your search.
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-8 float-in delay-2">
               {groupedReferences.map(([groupKey, groupRefs]) => (
                 <section key={groupKey}>
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-4 px-2">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">
                       {resolveGroupLabel(groupKey)}
                     </h3>
-                    <span className="text-xs text-stone-400">{groupRefs.length}</span>
+                    <span className="text-xs font-bold text-stone-300 bg-stone-50 px-2.5 py-1 rounded-full">{groupRefs.length}</span>
                   </div>
 
-                  <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" : "space-y-4"}>
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
                     {groupRefs.map((ref) => (
                       <ReferenceCard
                         key={ref.reference_id}
@@ -556,7 +564,6 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
               ))}
             </div>
           )}
-
         </main>
 
         <aside className="hidden lg:block sticky top-24 h-fit">
@@ -767,6 +774,66 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
           </div>
         </div>
       )}
+
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)} />
+          <div className="relative z-10 bg-white rounded-4xl p-8 w-full max-w-sm shadow-2xl float-in">
+            <h3 className="text-xl font-bold text-stone-900 mb-2">New Category</h3>
+            <p className="text-sm text-stone-500 mb-6 font-medium">Enter a custom category for this member.</p>
+            <input
+              autoFocus
+              value={customCategoryInput}
+              onChange={(e) => setCustomCategoryInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customCategoryInput.trim()) {
+                  if (targetMemberId) {
+                    updateMemberCategory?.(targetMemberId, customCategoryInput.trim());
+                    showToast("Category updated");
+                    setIsCategoryModalOpen(false);
+                    setCategoryMenuMemberId(null);
+                  }
+                }
+              }}
+              placeholder="e.g. Design Team, Legal, Engineering"
+              className="w-full px-4 py-3.5 rounded-2xl border border-stone-200 text-base focus:outline-none focus:ring-2 focus:ring-lime-400/60 mb-6 bg-stone-50/50"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="flex-1 px-4 py-3.5 rounded-2xl border border-stone-200 text-stone-600 font-bold text-sm hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!customCategoryInput.trim()) return;
+                  if (targetMemberId) {
+                    await updateMemberCategory?.(targetMemberId, customCategoryInput.trim());
+                    showToast("Category updated");
+                    setIsCategoryModalOpen(false);
+                    setCategoryMenuMemberId(null);
+                  }
+                }}
+                disabled={!customCategoryInput.trim()}
+                className="flex-2 px-6 py-3.5 rounded-2xl bg-stone-900 text-white font-bold text-sm hover:bg-black transition-colors disabled:opacity-50"
+              >
+                Save Category
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <button
+        onClick={() => setIsChatOpen(true)}
+        className="fixed bottom-8 left-8 z-50 w-16 h-16 rounded-full bg-stone-900 text-lime-400 shadow-2xl hover:bg-black hover:scale-105 transition-all flex items-center justify-center border-4 border-white group float-in delay-3"
+        title="Open workspace chat"
+      >
+        <div className="relative">
+          <MessageCircle className="w-7 h-7" />
+          <span className="absolute -top-1 -right-1 w-3 h-3 bg-lime-500 rounded-full border-2 border-stone-900 animate-pulse"></span>
+        </div>
+      </button>
     </div>
   );
 }

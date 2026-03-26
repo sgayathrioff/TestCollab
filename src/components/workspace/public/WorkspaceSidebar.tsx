@@ -14,10 +14,8 @@ const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode; colo
 interface WorkspaceSidebarProps {
   folders: WorkspaceFolder[];
   references: ReferenceData[];
-  tags: string[];
   activeFilter: FolderFilter;
   onFilterChange: (filter: FolderFilter) => void;
-  onTagClick?: (tag: string) => void;
   canManageFolders?: boolean;
   onCreateFolder?: () => void;
   onDeleteFolder?: (folderId: string) => void;
@@ -45,10 +43,8 @@ function isFilterActive(filter: FolderFilter, check: FolderFilter): boolean {
 export function WorkspaceSidebar({
   folders,
   references,
-  tags,
   activeFilter,
   onFilterChange,
-  onTagClick,
   canManageFolders = false,
   onCreateFolder,
   onDeleteFolder,
@@ -224,25 +220,6 @@ export function WorkspaceSidebar({
         )}
       </ul>
 
-      {/* Tags */}
-      {tags.length > 0 && (
-        <div>
-          <h3 className="font-bold text-stone-400 uppercase tracking-widest text-xs mb-4 px-2">
-            Popular Tags
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag, index) => (
-              <span
-                key={index}
-                onClick={() => onTagClick?.(tag)}
-                className="px-3 py-1.5 bg-stone-100 text-stone-600 rounded-lg text-sm font-medium hover:bg-stone-200 cursor-pointer transition-colors"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

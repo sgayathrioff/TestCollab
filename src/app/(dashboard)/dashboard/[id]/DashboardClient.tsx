@@ -219,23 +219,7 @@ export default function DashboardClient({
         </div>
       )}
 
-      {workspaces.length > 0 && (
-        <div className="mt-12 bg-white rounded-[48px] p-12 text-center border border-dashed border-stone-200 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-lime-300 via-green-400 to-emerald-500"></div>
-
-          <div className="inline-flex justify-center items-center w-20 h-20 bg-stone-50 rounded-full mb-6 text-stone-300">
-            <FolderPlus className="w-10 h-10" />
-          </div>
-          <h3 className="text-2xl font-medium text-stone-900 mb-2">Looking for something else?</h3>
-          <p className="text-stone-500 mb-8 max-w-md mx-auto">Create a new workspace to start organizing your references in a flow state.</p>
-          <Link
-            href="/explore"
-            className="px-8 py-3 rounded-full border-2 border-stone-900 text-stone-900 font-bold hover:bg-stone-900 hover:text-white transition-all duration-300 inline-block"
-          >
-            Browse Archives
-          </Link>
-        </div>
-      )}
+      
     </>
   );
 }

@@ -102,16 +102,11 @@ export function WorkspaceCard({
               <span className="text-xs font-bold text-stone-400">{updatedAt}</span>
             )}
 
-            {/* Likes */}
-            <div className="flex items-center gap-1 text-xs font-bold text-stone-400">
-              <Heart
-                className={`w-4 h-4 ${isLiked ? "text-red-400 fill-red-400" : "text-stone-300"}`}
-              />
-              {formattedLikes}
+            
             </div>
           </div>
         </div>
-      </div>
+     
     </Link>
   );
 }

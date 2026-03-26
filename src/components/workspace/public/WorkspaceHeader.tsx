@@ -200,21 +200,7 @@ export function WorkspaceHeader({
                 </>
               ) : (
                 <>
-                  {/* Visitor: Like Button */}
-                  <button
-                    onClick={handleLike}
-                    className={`w-full sm:w-14 h-14 rounded-full border-2 flex items-center justify-center transition-colors group ${
-                      liked
-                        ? "bg-red-50 border-red-200 text-red-500"
-                        : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                    }`}
-                  >
-                    <Heart
-                      className={`w-6 h-6 transition-colors ${
-                        liked ? "fill-red-500" : "group-hover:text-red-500"
-                      }`}
-                    />
-                  </button>
+                
 
                   {/* Visitor: Share Button */}
                   <button

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Activity, ChevronDown } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Activity, ChevronDown, Tag, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
@@ -69,7 +69,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [groupBy, setGroupBy] = useState<"type" | "folder" | "none">("type");
+  const [groupBy, setGroupBy] = useState<"type" | "folder" | "tag" | "none">("type");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "alphabetical" | "reverse-alphabetical">("newest");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -91,13 +91,18 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
     canDeleteWorkspace: false,
   };
 
-  const tags = useMemo(() => {
-    const tagSet = new Set<string>();
+  const allTags = useMemo(() => {
+    const tagMap = new Map<string, { tag_id: string; tag_name: string; tag_color: string }>();
     typedReferences.forEach((ref) => {
-      (ref.tags || []).forEach((tag) => tagSet.add(tag.tag_name));
+      (ref.tags || []).forEach((tag) => {
+        if (!tagMap.has(tag.tag_id)) tagMap.set(tag.tag_id, tag);
+      });
     });
-    return Array.from(tagSet).slice(0, 12);
+    return Array.from(tagMap.values());
   }, [typedReferences]);
+
+  // Kept for sidebar compatibility (though sidebar tags were removed, keeping memo for allTags utility)
+  const tags = useMemo(() => allTags.map((t) => t.tag_name).slice(0, 12), [allTags]);
 
   const memberCategoryGroups = useMemo(() => {
     const grouped = typedMembers.reduce((acc, member) => {
@@ -177,6 +182,28 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
       return Object.entries(groups).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     }
 
+    if (groupBy === "tag") {
+      const groups: Record<string, ReferenceData[]> = {};
+      filteredReferences.forEach((ref) => {
+        const refTags = ref.tags || [];
+        if (refTags.length === 0) {
+          (groups["untagged"] ||= []).push(ref);
+        } else {
+          refTags.forEach((tag) => {
+            (groups[tag.tag_id] ||= []).push(ref);
+          });
+        }
+      });
+      // Sort tag groups by name; push untagged to end
+      return Object.entries(groups).sort(([a], [b]) => {
+        if (a === "untagged") return 1;
+        if (b === "untagged") return -1;
+        const nameA = allTags.find((t) => t.tag_id === a)?.tag_name ?? "";
+        const nameB = allTags.find((t) => t.tag_id === b)?.tag_name ?? "";
+        return nameA.localeCompare(nameB);
+      });
+    }
+
     const groups = filteredReferences.reduce((acc, ref) => {
       const key = ref.folder_id || "uncategorized";
       if (!acc[key]) acc[key] = [];
@@ -185,10 +212,14 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
     }, {} as Record<string, ReferenceData[]>);
 
     return Object.entries(groups);
-  }, [filteredReferences, groupBy]);
+  }, [filteredReferences, groupBy, allTags]);
 
   const resolveGroupLabel = (groupKey: string) => {
     if (groupBy === "type") return groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
+    if (groupBy === "tag") {
+      if (groupKey === "untagged") return "Untagged";
+      return allTags.find((t) => t.tag_id === groupKey)?.tag_name ?? "Tag";
+    }
     if (groupKey === "uncategorized") return "Uncategorized";
     return typedFolders.find((f) => f.folder_id === groupKey)?.folder_name || "Collection";
   };
@@ -365,10 +396,8 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         <WorkspaceSidebar
           folders={typedFolders}
           references={typedReferences}
-          tags={tags}
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
-          onTagClick={(tag) => setSearchQuery(tag)}
           canManageFolders={permissions.canManageMembers}
           onCreateFolder={() => setIsCreateFolderOpen(true)}
           onDeleteFolder={async (folderId) => {
@@ -417,6 +446,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
                 >
                   <option value="type">Group: Type</option>
                   <option value="folder">Group: Folder</option>
+                  <option value="tag">Group: Tag</option>
                   <option value="none">Group: None</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -435,6 +465,8 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
                 </select>
                 <ArrowDownUp className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
+
+
 
               {permissions.canEdit && (
                 <button

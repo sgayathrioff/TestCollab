@@ -148,9 +148,7 @@ export default function DashboardLayout({
 
           {/* Search & Avatar */}
           <div className="flex items-center gap-2">
-            <Link href="/search" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-50 transition-colors">
-              <Search className="w-5 h-5" />
-            </Link>
+           
 
             <NotificationBell />
             

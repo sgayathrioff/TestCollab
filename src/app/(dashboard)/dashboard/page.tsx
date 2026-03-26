@@ -5,17 +5,17 @@ import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase"; // <--- NOW USING SUPABASE
 import { Card, CardContent } from "@/components/ui/Card";
-import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal"; 
-import { 
-  Plus, Bell, LayoutGrid, FileText, ArrowUpRight, 
+import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
+import {
+  Plus, Bell, LayoutGrid, FileText, ArrowUpRight,
   Users
 } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
-  const [isModalOpen, setIsModalOpen] = useState(false); 
-  const [workspaces, setWorkspaces] = useState<any[]>([]); 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const date = new Date().toLocaleDateString("en-US", { weekday: 'short', day: 'numeric', month: 'short' });
@@ -32,14 +32,32 @@ export default function DashboardPage() {
     const fetchWorkspaces = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // Query 1: Workspaces I own
+        const { data: owned, error: ownedError } = await supabase
           .from('workspaces')
           .select('*')
-          .eq('workspace_owner_id', user.id) // Use the correct column name
-          .order('workspace_created_at', { ascending: false });
+          .eq('workspace_owner_id', user.id)
+          .eq('is_archived', false);
 
-        if (error) throw error;
-        setWorkspaces(data || []);
+        if (ownedError) throw ownedError;
+
+        // Query 2: Workspaces where I am a member
+        const { data: shared, error: sharedError } = await supabase
+          .from('workspace_members')
+          .select('workspaces(*)')
+          .eq('profile_id', user.id);
+
+        if (sharedError) throw sharedError;
+
+        const sharedWorkspaces = (shared || [])
+          .map((row: any) => row.workspaces)
+          .filter((w: any) => w !== null && w.is_archived === false && w.workspace_owner_id !== user.id);
+
+        const workspaceList = [...(owned || []), ...sharedWorkspaces].sort((a, b) =>
+          new Date(b.workspace_created_at).getTime() - new Date(a.workspace_created_at).getTime()
+        );
+
+        setWorkspaces(workspaceList);
       } catch (err) {
         console.error("Error loading workspaces:", err);
       } finally {
@@ -53,13 +71,13 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-350 mx-auto space-y-12">
-      
+
       {/* --- THE MODAL --- */}
       {/* We pass the setWorkspaces function so the modal can update the UI instantly when a new workspace is created */}
-      <CreateWorkspaceModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        setWorkspaces={setWorkspaces} 
+      <CreateWorkspaceModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        setWorkspaces={setWorkspaces}
       />
 
       {/* --- Header Section --- */}
@@ -69,14 +87,14 @@ export default function DashboardPage() {
             <span className="w-2 h-2 rounded-full bg-lime-500 animate-pulse"></span>
             <span className="text-xs font-bold uppercase tracking-widest text-stone-400">{date}</span>
           </div>
-          
+
           <h1 className="text-6xl md:text-7xl font-medium tracking-tight text-stone-900 mb-6 leading-[1.1]">
             Create flow,<br />
             <span className="text-stone-300">not friction.</span>
           </h1>
-          
+
           <div className="flex flex-wrap items-center gap-4">
-            <button 
+            <button
               onClick={() => setIsModalOpen(true)}
               className="h-14 px-8 rounded-full bg-[#1c1917] text-white text-lg font-medium hover:scale-105 transition-transform duration-300 flex items-center gap-3 shadow-xl shadow-stone-900/20"
             >
@@ -148,20 +166,20 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
+
             {/* Map through Supabase Data */}
             {workspaces.map((ws) => (
-            <WorkspaceCard 
-              key={ws.workspace_id} // <--- CRITICAL: Must use workspace_id
-              id={ws.workspace_id}  // <--- CRITICAL: Must use workspace_id
-              title={ws.workspace_title} // <--- CRITICAL: Must use workspace_title
-              type={ws.workspace_visibility || "Private"} 
-              // Random image for now since we don't have a cover image column yet
-              image={`https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80`}
-              updated={new Date(ws.workspace_created_at).toLocaleDateString()}
-            />
-          ))}
-                      
+              <WorkspaceCard
+                key={ws.workspace_id} // <--- CRITICAL: Must use workspace_id
+                id={ws.workspace_id}  // <--- CRITICAL: Must use workspace_id
+                title={ws.workspace_title} // <--- CRITICAL: Must use workspace_title
+                type={ws.workspace_visibility || "Private"}
+                // Random image for now since we don't have a cover image column yet
+                image={`https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80`}
+                updated={new Date(ws.workspace_created_at).toLocaleDateString()}
+              />
+            ))}
+
           </div>
         )}
       </div>

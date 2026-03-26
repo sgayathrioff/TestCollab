@@ -5,10 +5,10 @@ import { ChevronDown, ChevronRight, FolderPlus, Folder, Image, PlayCircle, FileT
 import type { WorkspaceFolder, ReferenceData, FolderFilter } from "@/types";
 
 const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  image:    { label: "Images",    icon: <Image className="w-3.5 h-3.5" />,       color: "text-sky-500" },
-  video:    { label: "Videos",    icon: <PlayCircle className="w-3.5 h-3.5" />,   color: "text-rose-500" },
-  audio:    { label: "Audio",     icon: <Mic className="w-3.5 h-3.5" />,          color: "text-purple-500" },
-  document: { label: "Documents", icon: <FileText className="w-3.5 h-3.5" />,     color: "text-amber-500" },
+  image: { label: "Images", icon: <Image className="w-3.5 h-3.5" />, color: "text-sky-500" },
+  video: { label: "Videos", icon: <PlayCircle className="w-3.5 h-3.5" />, color: "text-rose-500" },
+  audio: { label: "Audio", icon: <Mic className="w-3.5 h-3.5" />, color: "text-purple-500" },
+  document: { label: "Documents", icon: <FileText className="w-3.5 h-3.5" />, color: "text-amber-500" },
 };
 
 interface WorkspaceSidebarProps {
@@ -87,11 +87,10 @@ export function WorkspaceSidebar({
         <li>
           <button
             onClick={() => onFilterChange(null)}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors ${
-              isFilterActive(activeFilter, null)
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors ${isFilterActive(activeFilter, null)
                 ? "bg-[#1c1917] text-white shadow-lg shadow-stone-900/10"
                 : "text-stone-600 hover:bg-stone-50 font-medium"
-            }`}
+              }`}
           >
             <span className={`flex items-center gap-2 ${isFilterActive(activeFilter, null) ? "font-bold" : ""}`}>
               <Inbox className="w-4 h-4 shrink-0" />
@@ -122,11 +121,10 @@ export function WorkspaceSidebar({
                 onMouseLeave={() => setHoveredFolder(null)}
               >
                 <div
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded-2xl transition-colors ${
-                    isFolderActive && !("subType" in (activeFilter as any) && (activeFilter as any).subType)
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded-2xl transition-colors ${isFolderActive && !("subType" in (activeFilter as any) && (activeFilter as any).subType)
                       ? "bg-[#1c1917] text-white shadow-lg shadow-stone-900/10"
                       : "text-stone-600 hover:bg-stone-50 font-medium"
-                  }`}
+                    }`}
                 >
                   <button
                     type="button"
@@ -181,11 +179,10 @@ export function WorkspaceSidebar({
                   <button
                     key={subType}
                     onClick={() => onFilterChange(subFilter)}
-                    className={`w-full flex items-center gap-2 pl-12 pr-4 py-2 rounded-xl transition-colors text-sm ml-2 ${
-                      isSubActive
+                    className={`w-full flex items-center gap-2 pl-12 pr-4 py-2 rounded-xl transition-colors text-sm ml-2 ${isSubActive
                         ? "bg-stone-100 text-stone-900 font-bold"
                         : "text-stone-500 hover:text-stone-900 hover:bg-stone-50"
-                    }`}
+                      }`}
                   >
                     <span className={meta.color}>{meta.icon}</span>
                     <span className="flex-1 text-left">{meta.label}</span>
@@ -202,11 +199,10 @@ export function WorkspaceSidebar({
           <li>
             <button
               onClick={() => onFilterChange({ type: "uncategorized" })}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors ${
-                activeFilter !== null && activeFilter.type === "uncategorized"
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors ${activeFilter !== null && activeFilter.type === "uncategorized"
                   ? "bg-[#1c1917] text-white shadow-lg shadow-stone-900/10"
                   : "text-stone-500 hover:bg-stone-50 font-medium"
-              }`}
+                }`}
             >
               <span className={`flex items-center gap-2 text-sm ${activeFilter !== null && activeFilter.type === "uncategorized" ? "font-bold" : ""}`}>
                 <Inbox className="w-4 h-4 shrink-0 opacity-50" />

@@ -87,11 +87,11 @@ export function useWorkspace(workspaceId: string) {
   // Get current user's role in workspace
   const getCurrentUserRole = (): MemberRole | null => {
     if (!user || !workspace || !isValidWorkspaceId) return null;
-    
+
     if (workspace.workspace_owner_id === user.id) {
       return 'owner';
     }
-    
+
     const memberRecord = members.find(m => m.profile_id === user.id);
     return memberRecord?.member_role || null;
   };
@@ -102,7 +102,7 @@ export function useWorkspace(workspaceId: string) {
   const getPermissions = (): MemberPermissions => {
     const role = getCurrentUserRole();
     const isPublic = workspace?.workspace_visibility === 'public';
-    
+
     // Owner: full access
     if (role === 'owner') {
       return {
@@ -112,7 +112,7 @@ export function useWorkspace(workspaceId: string) {
         canDeleteWorkspace: true,
       };
     }
-    
+
     // Member: can view and edit, but not manage members
     if (role === 'member') {
       return {
@@ -132,7 +132,7 @@ export function useWorkspace(workspaceId: string) {
         canDeleteWorkspace: false,
       };
     }
-    
+
     // Not a member: can only view if public
     return {
       canView: isPublic,
@@ -198,18 +198,18 @@ export function useWorkspace(workspaceId: string) {
           .select('*')
           .eq('workspace_id', workspaceId)
           .order('reference_created_at', { ascending: false });
-        
+
         if (simpleError) throw simpleError;
         setReferences(simpleData || []);
         return; // Exit early with simple data
       }
-      
+
       // Transform the nested structure to match our interface
       const transformedReferences = (referencesData || []).map((ref: any) => ({
         ...ref,
         tags: ref.reference_tags?.map((rt: any) => rt.tags).filter(Boolean) || []
       }));
-      
+
       setReferences(transformedReferences);
 
       // 4. Fetch workspace folders (table may not exist until migration is run)
@@ -238,7 +238,7 @@ export function useWorkspace(workspaceId: string) {
 
       // Get profile IDs for all members
       const memberProfileIds = membersData?.map(m => m.profile_id) || [];
-      
+
       // Fetch profiles for all members
       let memberProfiles: any[] = [];
       if (memberProfileIds.length > 0) {
@@ -426,7 +426,7 @@ export function useWorkspace(workspaceId: string) {
   // Update workspace details
   const updateWorkspace = useCallback(async (updates: Partial<WorkspaceData>) => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
-    
+
     const permissions = getPermissions();
     if (!permissions.canEdit) {
       throw new Error('You do not have permission to edit this workspace');
@@ -470,7 +470,7 @@ export function useWorkspace(workspaceId: string) {
   // Add a member (always as 'member' role - simplified)
   const addMember = useCallback(async (profileId: string): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
-    
+
     const permissions = getPermissions();
     if (!permissions.canManageMembers) {
       throw new Error('Only workspace owners can add members');
@@ -531,7 +531,7 @@ export function useWorkspace(workspaceId: string) {
 
   const removeMember = useCallback(async (profileId: string): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
-    
+
     // Can't remove the owner
     if (profileId === workspace.workspace_owner_id) {
       throw new Error('Cannot remove the workspace owner');
@@ -637,7 +637,7 @@ export function useWorkspace(workspaceId: string) {
   // Invite member by email (always adds as 'member')
   const inviteMemberByEmail = useCallback(async (email: string): Promise<void> => {
     if (!user || !workspace) throw new Error('User not authenticated or workspace not loaded');
-    
+
     const permissions = getPermissions();
     if (!permissions.canManageMembers) {
       throw new Error('Only workspace owners can invite members');
@@ -647,10 +647,10 @@ export function useWorkspace(workspaceId: string) {
       // Find user by email
       const [{ data: profile, error: profileError }, { data: inviterProfile }] = await Promise.all([
         supabase
-        .from('profiles')
-        .select('profile_id')
-        .eq('profile_email', email.toLowerCase().trim())
-        .single(),
+          .from('profiles')
+          .select('profile_id')
+          .eq('profile_email', email.toLowerCase().trim())
+          .single(),
         supabase
           .from('profiles')
           .select('display_name')
@@ -815,86 +815,93 @@ export function useWorkspace(workspaceId: string) {
     fetchWorkspace();
 
     // Set up realtime subscriptions
-    const referencesChannel = supabase
-      .channel(`workspace-references-${workspaceId}`)
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'references',
-          filter: `workspace_id=eq.${workspaceId}`
-        }, 
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            addReferenceState(payload.new as any);
-          } else if (payload.eventType === 'DELETE') {
-            removeReference(payload.old.reference_id as string);
-          } else if (payload.eventType === 'UPDATE') {
-            const current = useReferencesStore.getState().references as any[];
-            const existing = current.find((ref) => ref.reference_id === payload.new.reference_id);
-            updateReferenceState(payload.new.reference_id as string, {
-              ...(payload.new as any),
-              tags: existing?.tags || [],
-            });
+    const subscribeReferences = () =>
+      supabase
+        .channel(`workspace-references-${workspaceId}`)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'references', filter: `workspace_id=eq.${workspaceId}` },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              addReferenceState(payload.new as any);
+            } else if (payload.eventType === 'DELETE') {
+              removeReference(payload.old.reference_id as string);
+            } else if (payload.eventType === 'UPDATE') {
+              const current = useReferencesStore.getState().references as any[];
+              const existing = current.find((ref) => ref.reference_id === payload.new.reference_id);
+              updateReferenceState(payload.new.reference_id as string, {
+                ...(payload.new as any),
+                tags: existing?.tags || [],
+              });
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
 
-    const workspaceChannel = supabase
-      .channel(`workspace-details-${workspaceId}`)
-      .on('postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workspaces',
-          filter: `workspace_id=eq.${workspaceId}`
-        },
-        (payload) => {
-          setWorkspace(payload.new as WorkspaceData);
-        }
-      )
-      .subscribe();
+    const subscribeWorkspace = () =>
+      supabase
+        .channel(`workspace-details-${workspaceId}`)
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'workspaces', filter: `workspace_id=eq.${workspaceId}` },
+          (payload) => { setWorkspace(payload.new as WorkspaceData); }
+        )
+        .subscribe();
 
-    const membersChannel = supabase
-      .channel(`workspace-members-${workspaceId}`)
-      .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workspace_members',
-          filter: `workspace_id=eq.${workspaceId}`
-        },
-        (payload) => {
-          // Re-fetch workspace data when members change
-          // Using a small delay to batch updates
-          setTimeout(() => {
-            fetchWorkspace();
-          }, 500);
-        }
-      )
-      .subscribe();
+    const subscribeMembers = () =>
+      supabase
+        .channel(`workspace-members-${workspaceId}`)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'workspace_members', filter: `workspace_id=eq.${workspaceId}` },
+          () => { setTimeout(() => { fetchWorkspace(); }, 500); }
+        )
+        .subscribe();
 
-    const refChannel = supabase
-      .channel(`references-${workspaceId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'references',
-        filter: `workspace_id=eq.${workspaceId}`,
-      }, (payload) => {
-        updateReferenceState(payload.new.reference_id as string, payload.new as any);
-      })
-      .subscribe();
+    const subscribeRefUpdates = () =>
+      supabase
+        .channel(`references-${workspaceId}`)
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'references', filter: `workspace_id=eq.${workspaceId}` },
+          (payload) => { updateReferenceState(payload.new.reference_id as string, payload.new as any); }
+        )
+        .subscribe();
+
+    let referencesChannel = subscribeReferences();
+    let workspaceChannel = subscribeWorkspace();
+    let membersChannel = subscribeMembers();
+    let refChannel = subscribeRefUpdates();
+
+    // FIX 3: Reconnect dead channels on tab visibility restore.
+    // Supabase WebSocket can close while the tab is backgrounded.
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (referencesChannel.state === 'closed' || referencesChannel.state === 'errored') {
+        supabase.removeChannel(referencesChannel);
+        referencesChannel = subscribeReferences();
+      }
+      if (workspaceChannel.state === 'closed' || workspaceChannel.state === 'errored') {
+        supabase.removeChannel(workspaceChannel);
+        workspaceChannel = subscribeWorkspace();
+      }
+      if (membersChannel.state === 'closed' || membersChannel.state === 'errored') {
+        supabase.removeChannel(membersChannel);
+        membersChannel = subscribeMembers();
+      }
+      if (refChannel.state === 'closed' || refChannel.state === 'errored') {
+        supabase.removeChannel(refChannel);
+        refChannel = subscribeRefUpdates();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      // Properly remove all channels
+      document.removeEventListener('visibilitychange', handleVisibility);
+      // FIX 2: Do NOT call reset() or setReferences([]) here.
+      // Clearing stores on unmount wipes data on every tab switch and
+      // client-side navigation, causing the infinite spinner.
       supabase.removeChannel(referencesChannel);
       supabase.removeChannel(workspaceChannel);
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(refChannel);
-      reset();
-      setReferences([]);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, isValidWorkspaceId]);
@@ -906,23 +913,23 @@ export function useWorkspace(workspaceId: string) {
     references,
     members,
     folders,
-    
+
     // State
     loading,
     error,
     isOwner,
-    
+
     // User role and permissions
     getCurrentUserRole,
     getPermissions,
-    
+
     // Actions
     addReference,
     deleteReference,
     updateReference,
     updateWorkspace,
     refetch: fetchWorkspace,
-    
+
     // Member management
     addMember,
     removeMember,

@@ -40,8 +40,17 @@ export function CreateWorkspaceModal({ isOpen, onClose, setWorkspaces }: CreateW
         .single();
 
       if (error) throw error;
+      const workspaceId = data.workspace_id;
 
-      // 2. Update Parent State
+      // 2. Add owner to workspace_members
+      await supabase.from('workspace_members').insert({
+        workspace_id: workspaceId,
+        profile_id: user.id,
+        member_role: 'owner',
+        member_joined_at: new Date().toISOString()
+      });
+
+      // 3. Update Parent State
       setWorkspaces((prev) => [data, ...prev]);
 
       // 3. Reset and Close

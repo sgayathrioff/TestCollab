@@ -58,7 +58,7 @@ export function WorkspaceHeader({
   const authorInitial = (author.name?.trim()?.[0] || "U").toUpperCase();
   // Use prop if provided, otherwise local state (though usually controlled)
   // Check if we are in controlled mode effectively by seeing if we have a valid isFollowing prop
-  
+
   const handleLike = () => {
     setLiked(!liked);
     onLike?.();
@@ -152,11 +152,10 @@ export function WorkspaceHeader({
                 {!isOwner && (
                   <button
                     onClick={onFollow}
-                    className={`ml-4 px-4 py-1.5 rounded-full border-2 text-sm font-bold transition-colors ${
-                      isFollowing
+                    className={`ml-4 px-4 py-1.5 rounded-full border-2 text-sm font-bold transition-colors ${isFollowing
                         ? "bg-stone-900 text-white border-stone-900"
                         : "border-stone-200 text-stone-600 hover:bg-stone-50"
-                    }`}
+                      }`}
                   >
                     {isFollowing ? "Following" : "Follow"}
                   </button>
@@ -200,7 +199,7 @@ export function WorkspaceHeader({
                 </>
               ) : (
                 <>
-                
+
 
                   {/* Visitor: Share Button */}
                   <button

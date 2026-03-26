@@ -74,15 +74,15 @@ export function useNotifications() {
     fetchNotifications();
 
     // Subscribe to realtime changes
-    const channel = supabase
+    let channel = supabase
       .channel(`user-notifications-${user.id}`)
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'notifications', 
-          filter: `recipient_profile_id=eq.${user.id}` 
-        }, 
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient_profile_id=eq.${user.id}`
+        },
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newNotif = payload.new as Notification;
@@ -105,9 +105,38 @@ export function useNotifications() {
       )
       .subscribe();
 
+    // FIX 4: Reconnect the notifications channel when the tab regains focus.
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (channel.state === 'closed' || channel.state === 'errored') {
+        supabase.removeChannel(channel);
+        channel = supabase
+          .channel(`user-notifications-${user.id}`)
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'notifications', filter: `recipient_profile_id=eq.${user.id}` },
+            (payload) => {
+              if (payload.eventType === 'INSERT') {
+                addNotification(payload.new as Notification);
+              } else if (payload.eventType === 'UPDATE') {
+                const current = useNotificationsStore.getState().notifications;
+                setNotifications(current.map((n) =>
+                  n.notification_id === (payload.new as Notification).notification_id
+                    ? (payload.new as Notification) : n
+                ));
+              } else if (payload.eventType === 'DELETE') {
+                const current = useNotificationsStore.getState().notifications;
+                setNotifications(current.filter((n) => n.notification_id !== payload.old.notification_id));
+              }
+            }
+          )
+          .subscribe();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
-      // Use clean-up function to avoid "WebSocket connection failed" warning
-      // Only attempt to remove channel if it exists
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (channel) {
         supabase.removeChannel(channel);
       }
@@ -129,7 +158,7 @@ export function useNotifications() {
       console.error('Error marking notification as read:', err);
     }
   };
-  
+
   const markAllAsRead = async () => {
     try {
       const unreadIds = notifications.filter(n => !n.notification_is_read).map(n => n.notification_id);

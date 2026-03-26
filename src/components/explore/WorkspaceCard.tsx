@@ -102,11 +102,11 @@ export function WorkspaceCard({
               <span className="text-xs font-bold text-stone-400">{updatedAt}</span>
             )}
 
-            
-            </div>
+
           </div>
         </div>
-     
+      </div>
+
     </Link>
   );
 }

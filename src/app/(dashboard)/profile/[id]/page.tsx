@@ -129,7 +129,7 @@ export default function ProfilePage({
   const [stats, setStats] = useState<ProfileStats>(mockStats);
   const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Use useFollow hook directly - will automatically check status on mount
   const { isFollowing, toggleFollow, isLoading } = useFollow(profileId || "");
   const [activeTab, setActiveTab] = useState<"workspaces" | "saved">("workspaces");
@@ -242,10 +242,10 @@ export default function ProfilePage({
     await toggleFollow();
     // Optimistically update follow count
     setStats(prev => ({
-        ...prev,
-        followersCount: isFollowing 
-            ? Math.max(0, prev.followersCount - 1) 
-            : prev.followersCount + 1
+      ...prev,
+      followersCount: isFollowing
+        ? Math.max(0, prev.followersCount - 1)
+        : prev.followersCount + 1
     }));
   };
 
@@ -273,7 +273,7 @@ export default function ProfilePage({
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
@@ -374,8 +374,8 @@ export default function ProfilePage({
                     <BadgeCheck className="w-6 h-6 text-lime-600 fill-lime-100" />
                   )}
                   {user?.id === profile.id && (
-                    <button 
-                      onClick={() => openEdit("general")} 
+                    <button
+                      onClick={() => openEdit("general")}
                       className="p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors ml-2"
                       title="Edit Profile"
                     >
@@ -402,11 +402,10 @@ export default function ProfilePage({
               ) : (
                 <button
                   onClick={handleFollowToggle}
-                  className={`px-8 py-3 rounded-full font-bold transition-colors text-lg ${
-                    isFollowing
+                  className={`px-8 py-3 rounded-full font-bold transition-colors text-lg ${isFollowing
                       ? "bg-stone-100 text-stone-900 hover:bg-stone-200 border border-stone-200"
                       : "bg-[#1c1917] text-white hover:bg-stone-800 shadow-md"
-                  }`}
+                    }`}
                 >
                   {isLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
                 </button>
@@ -472,8 +471,8 @@ export default function ProfilePage({
                   ))}
                 </div>
                 {user?.id === profile.id && (
-                  <button 
-                    onClick={() => openEdit("bio")} 
+                  <button
+                    onClick={() => openEdit("bio")}
                     className="absolute right-0 top-0 p-2 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors opacity-0 group-hover:opacity-100"
                     title="Edit Bio"
                   >
@@ -481,15 +480,15 @@ export default function ProfilePage({
                   </button>
                 )}
               </div>
-              
+
               {/* Skills */}
               {(profile.skills && profile.skills.length > 0 || user?.id === profile.id) && (
                 <div className="mt-4 relative group">
                   <div className="flex items-center gap-2 mb-3">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">Skills</h3>
                     {user?.id === profile.id && (
-                      <button 
-                        onClick={() => openEdit("skills")} 
+                      <button
+                        onClick={() => openEdit("skills")}
                         className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors opacity-0 group-hover:opacity-100"
                         title="Edit Skills"
                       >
@@ -507,7 +506,7 @@ export default function ProfilePage({
                       </span>
                     ))}
                     {profile.skills.length === 0 && user?.id === profile.id && (
-                       <span className="text-stone-400 text-sm italic">Add skills...</span>
+                      <span className="text-stone-400 text-sm italic">Add skills...</span>
                     )}
                   </div>
                 </div>
@@ -553,22 +552,20 @@ export default function ProfilePage({
         <div className="flex items-center gap-6 border-b border-stone-200 mb-8 px-2">
           <button
             onClick={() => setActiveTab("workspaces")}
-            className={`pb-4 font-medium flex items-center gap-2 transition-colors ${
-              activeTab === "workspaces"
+            className={`pb-4 font-medium flex items-center gap-2 transition-colors ${activeTab === "workspaces"
                 ? "text-stone-900 font-bold border-b-2 border-stone-900"
                 : "text-stone-400 hover:text-stone-900"
-            }`}
+              }`}
           >
             <LayoutGrid className="w-5 h-5" /> Public Workspaces (
             {workspaces.length})
           </button>
           <button
             onClick={() => setActiveTab("saved")}
-            className={`pb-4 font-medium flex items-center gap-2 transition-colors ${
-              activeTab === "saved"
+            className={`pb-4 font-medium flex items-center gap-2 transition-colors ${activeTab === "saved"
                 ? "text-stone-900 font-bold border-b-2 border-stone-900"
                 : "text-stone-400 hover:text-stone-900"
-            }`}
+              }`}
           >
             <Star className="w-5 h-5" /> Saved/Starred
           </button>

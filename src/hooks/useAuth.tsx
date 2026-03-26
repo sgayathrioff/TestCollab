@@ -74,23 +74,39 @@ const initializeAuthOnce = async () => {
 
       if (!authSubscribed) {
         authSubscribed = true;
-        supabase.auth.onAuthStateChange(async (_event, session) => {
-          const { setUser, setIsLoading, clear } = useAuthStore.getState();
-          setIsLoading(true);
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          // FIX 1: Only clear on an explicit sign-out.
+          // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED etc. all fire on
+          // tab focus – calling clear() or setIsLoading(true) here causes the
+          // infinite spinner because the loading state is never resolved fast enough.
+          if (event === 'SIGNED_OUT') {
+            useAuthStore.getState().clear();
+            return;
+          }
 
-          try {
-            if (session?.user) {
-              setUser({ id: session.user.id, email: session.user.email || "" });
-              await fetchAndStoreProfile(session.user.id);
-            } else {
-              clear();
+          if (session?.user) {
+            useAuthStore.getState().setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+            });
+
+            // Only re-fetch profile when it isn't already loaded for this user.
+            // Avoids a redundant network round-trip + isLoading flicker on every
+            // tab focus / token refresh.
+            const existing = useAuthStore.getState().profile;
+            if (!existing || existing.profile_id !== session.user.id) {
+              try {
+                await fetchAndStoreProfile(session.user.id);
+              } catch (error) {
+                const message = getErrorMessage(error);
+                if (!message.toLowerCase().includes('failed to fetch')) {
+                  console.error('Error fetching profile on auth change:', message);
+                }
+              }
             }
-          } catch (error) {
-            const message = getErrorMessage(error);
-            if (!message.toLowerCase().includes("failed to fetch")) {
-              console.error("Error fetching profile on auth change:", message);
-            }
-          } finally {
+
+            // Ensure loading is false. We deliberately do NOT set it to true
+            // at the top of this block – that is what causes the spinner on focus.
             useAuthStore.getState().setIsLoading(false);
           }
         });

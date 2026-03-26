@@ -89,7 +89,7 @@ export function ReferenceCard({
   };
 
   return (
-    <div 
+    <div
       onClick={onClick}
       className={`bg-white rounded-4xl overflow-hidden group hover:shadow-xl transition-all border border-stone-100 hover-lift relative h-fit ${onClick ? 'cursor-pointer' : ''}`}>
       {/* Action buttons - only visible on hover */}
@@ -113,9 +113,8 @@ export function ReferenceCard({
                 {/* No folder option */}
                 <button
                   onClick={() => { onMove(null); setIsMoveOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-stone-50 transition-colors ${
-                    !currentFolderId ? "font-bold text-stone-900" : "text-stone-600"
-                  }`}
+                  className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-stone-50 transition-colors ${!currentFolderId ? "font-bold text-stone-900" : "text-stone-600"
+                    }`}
                 >
                   {!currentFolderId && <Check className="w-3.5 h-3.5 text-lime-500" />}
                   <span className={!currentFolderId ? "" : "pl-5"}>None</span>
@@ -124,9 +123,8 @@ export function ReferenceCard({
                   <button
                     key={f.folder_id}
                     onClick={() => { onMove(f.folder_id); setIsMoveOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-stone-50 transition-colors ${
-                      currentFolderId === f.folder_id ? "font-bold text-stone-900" : "text-stone-600"
-                    }`}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-stone-50 transition-colors ${currentFolderId === f.folder_id ? "font-bold text-stone-900" : "text-stone-600"
+                      }`}
                   >
                     {currentFolderId === f.folder_id && <Check className="w-3.5 h-3.5 text-lime-500 shrink-0" />}
                     <span className={currentFolderId === f.folder_id ? "" : "pl-5"}>{f.folder_name}</span>

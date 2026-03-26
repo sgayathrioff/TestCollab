@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FolderPlus, Folder, Image, PlayCircle, FileText, Mic, Inbox, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, Folder, Image, PlayCircle, FileText, Mic, Inbox, Trash2, LayoutGrid, ArrowLeft } from "lucide-react";
 import type { WorkspaceFolder, ReferenceData, FolderFilter } from "@/types";
+import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 const SUB_TYPE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   image: { label: "Images", icon: <Image className="w-3.5 h-3.5" />, color: "text-sky-500" },
@@ -49,6 +51,7 @@ export function WorkspaceSidebar({
   onCreateFolder,
   onDeleteFolder,
 }: WorkspaceSidebarProps) {
+  const { user } = useAuth();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
 
@@ -64,13 +67,29 @@ export function WorkspaceSidebar({
   const uncategorizedRefs = references.filter((r) => !r.folder_id);
   const totalCount = references.length;
 
+  const dashboardPath = user?.id ? `/dashboard/${user.id}` : "/dashboard";
+
   return (
-    <aside className="hidden lg:block sticky top-32 h-fit bg-white rounded-[40px] p-6 shadow-sm border border-stone-100">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 px-2">
-        <h3 className="font-bold text-stone-400 uppercase tracking-widest text-xs">
-          Collections
-        </h3>
+    <aside className="hidden lg:block sticky top-32 h-fit bg-white rounded-[40px] p-6 shadow-sm border border-stone-100 flex flex-col gap-8">
+      {/* Navigation */}
+      <div>
+        <Link 
+          href={dashboardPath}
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl text-stone-600 hover:bg-stone-50 font-bold transition-all border border-transparent hover:border-stone-100"
+        >
+          <div className="p-1.5 bg-stone-100 rounded-lg text-stone-500">
+            <LayoutGrid className="w-4 h-4" />
+          </div>
+          Dashboard
+        </Link>
+      </div>
+
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 px-2">
+          <h3 className="font-bold text-stone-400 uppercase tracking-widest text-xs">
+            Collections
+          </h3>
         {canManageFolders && (
           <button
             onClick={onCreateFolder}
@@ -215,7 +234,7 @@ export function WorkspaceSidebar({
           </li>
         )}
       </ul>
-
+      </div>
     </aside>
   );
 }

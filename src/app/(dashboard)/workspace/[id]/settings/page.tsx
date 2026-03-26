@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Camera, Trash2 } from "lucide-react";
+import { Camera, Trash2, ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/Toast";
 
 interface WorkspaceSettings {
   workspace_id: string;
@@ -26,6 +27,7 @@ export default function WorkspaceSettingsPage({
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { showToast } = useToast();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [title, setTitle] = useState("");
@@ -48,42 +50,60 @@ export default function WorkspaceSettingsPage({
 
   useEffect(() => {
     const fetchWorkspace = async () => {
-      if (!workspaceId || !user?.id) return;
+      if (!workspaceId) return;
 
-      const [{ data, error }, { data: ownerMembership }] = await Promise.all([
-        supabase
-          .from("workspaces")
-          .select("workspace_id, workspace_title, workspace_description, workspace_visibility, workspace_owner_id, workspace_cover_image")
-          .eq("workspace_id", workspaceId)
-          .single(),
-        supabase
-          .from("workspace_members")
-          .select("member_role")
-          .eq("workspace_id", workspaceId)
-          .eq("profile_id", user.id)
-          .eq("member_role", "owner")
-          .maybeSingle(),
-      ]);
+      if (!user?.id) {
+        if (!authLoading) setLoading(false);
+        return;
+      }
 
-      if (error || !data) {
+      console.log(`[Settings] Fetching data for workspace: ${workspaceId} (User: ${user.id})`);
+      setLoading(true);
+      try {
+        const [{ data, error }, { data: ownerMembership }] = await Promise.all([
+          supabase
+            .from("workspaces")
+            .select("*")
+            .eq("workspace_id", workspaceId)
+            .maybeSingle(),
+          supabase
+            .from("workspace_members")
+            .select("member_role")
+            .eq("workspace_id", workspaceId)
+            .eq("profile_id", user.id)
+            .eq("member_role", "owner")
+            .maybeSingle(),
+        ]);
+
+        if (error) {
+          console.error("Workspace settings fetch error:", error.message || error);
+          return;
+        }
+
+        if (!data) {
+          console.warn("No workspace found for ID:", workspaceId);
+          return;
+        }
+
+        const isOwner = data.workspace_owner_id === user.id || ownerMembership?.member_role === "owner";
+        if (!isOwner) {
+          console.warn("User is not authorized for settings (not an owner)");
+          router.replace(`/workspace/${workspaceId}`);
+          return;
+        }
+
+        setWorkspace(data as WorkspaceSettings);
+        setTitle(data.workspace_title || "");
+        setDescription(data.workspace_description || "");
+        setVisibility((data.workspace_visibility as "public" | "private") || "private");
+        setBannerPreview(data.workspace_cover_image || "");
+        setBannerFile(null);
+        setBannerRemoved(false);
+      } catch (err) {
+        console.error("Critical error in settings fetch:", err);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const isOwner = data.workspace_owner_id === user.id || ownerMembership?.member_role === "owner";
-      if (!isOwner) {
-        router.replace(`/workspace/${workspaceId}`);
-        return;
-      }
-
-      setWorkspace(data);
-      setTitle(data.workspace_title || "");
-      setDescription(data.workspace_description || "");
-      setVisibility((data.workspace_visibility as "public" | "private") || "private");
-      setBannerPreview(data.workspace_cover_image || "");
-      setBannerFile(null);
-      setBannerRemoved(false);
-      setLoading(false);
     };
 
     if (!authLoading) {
@@ -163,6 +183,7 @@ export default function WorkspaceSettingsPage({
       setBannerPreview(finalBannerUrl || "");
       setBannerFile(null);
       setBannerRemoved(false);
+      showToast("Workspace updated successfully");
     } finally {
       setSaving(false);
     }
@@ -211,7 +232,7 @@ export default function WorkspaceSettingsPage({
     router.push(`/dashboard/${user.id}`);
   };
 
-  if (loading || authLoading || !workspace) {
+  if (loading || authLoading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-900 rounded-full animate-spin" />
@@ -219,8 +240,33 @@ export default function WorkspaceSettingsPage({
     );
   }
 
+  if (!workspace) {
+    return (
+      <div className="max-w-3xl mx-auto mt-20 text-center">
+        <h2 className="text-2xl font-bold text-stone-900 mb-2">Workspace not found</h2>
+        <p className="text-stone-500 mb-8">This workspace may have been deleted or you don't have access.</p>
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="px-6 py-3 rounded-xl bg-stone-900 text-white font-semibold"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-16">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.push(`/dashboard/${user?.id}`)}
+          className="group flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-stone-200 text-stone-600 font-semibold hover:border-stone-900 hover:text-stone-900 transition-all shadow-sm"
+        >
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+          Dashboard
+        </button>
+      </div>
+
       <div className="bg-white/70 backdrop-blur-xl border border-white/50 rounded-4xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.04)]">
         <h1 className="text-2xl font-bold text-stone-900 mb-6">Workspace Settings</h1>
 
@@ -291,9 +337,8 @@ export default function WorkspaceSettingsPage({
             <button
               type="button"
               onClick={() => setVisibility((prev) => (prev === "public" ? "private" : "public"))}
-              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider ${
-                visibility === "public" ? "bg-lime-100 text-lime-700" : "bg-stone-100 text-stone-500"
-              }`}
+              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider ${visibility === "public" ? "bg-lime-100 text-lime-700" : "bg-stone-100 text-stone-500"
+                }`}
             >
               {visibility}
             </button>

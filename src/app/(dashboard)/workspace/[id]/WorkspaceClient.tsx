@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Activity, ChevronDown, Tag, X } from "lucide-react";
+import { Search, ArrowDownUp, LayoutGrid, List, Plus, MessageCircle, Users, Activity, ChevronDown, Tag, X, Pencil, Trash2, Check, Settings2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFollow } from "@/hooks/useFollow";
@@ -86,6 +86,11 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [targetMemberId, setTargetMemberId] = useState<string | null>(null);
   const [customCategoryInput, setCustomCategoryInput] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editCategoryValue, setEditCategoryValue] = useState("");
 
   const permissions = getPermissions ? getPermissions() : {
     canView: false,
@@ -104,8 +109,17 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
     return Array.from(tagMap.values());
   }, [typedReferences]);
 
-  // Kept for sidebar compatibility (though sidebar tags were removed, keeping memo for allTags utility)
   const tags = useMemo(() => allTags.map((t) => t.tag_name).slice(0, 12), [allTags]);
+
+  // Seed categories from member data on first load
+  useEffect(() => {
+    if (typedMembers.length > 0 && categories.length === 0) {
+      const derived = Array.from(
+        new Set(typedMembers.map((m) => m.member_category?.trim()).filter(Boolean) as string[])
+      ).sort((a, b) => a.localeCompare(b));
+      if (derived.length > 0) setCategories(derived);
+    }
+  }, [typedMembers]);
 
   const memberCategoryGroups = useMemo(() => {
     const grouped = typedMembers.reduce((acc, member) => {
@@ -122,15 +136,38 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
     });
   }, [typedMembers]);
 
-  const customCategoryOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        typedMembers
-          .map((member) => member.member_category?.trim())
-          .filter((value): value is string => !!value)
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [typedMembers]);
+  // Category management handlers
+  const handleAddCategory = () => {
+    const val = newCategoryInput.trim();
+    if (!val || categories.includes(val)) return;
+    setCategories((prev) => [...prev, val].sort((a, b) => a.localeCompare(b)));
+    setNewCategoryInput("");
+  };
+
+  const handleRenameCategory = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName || categories.includes(trimmed)) {
+      setEditingCategory(null);
+      return;
+    }
+    setCategories((prev) => prev.map((c) => (c === oldName ? trimmed : c)).sort((a, b) => a.localeCompare(b)));
+    setEditingCategory(null);
+    // Update all members with old category
+    const affected = typedMembers.filter((m) => m.member_category?.trim() === oldName);
+    for (const m of affected) {
+      await updateMemberCategory?.(m.profile_id, trimmed);
+    }
+    showToast("Category renamed");
+  };
+
+  const handleDeleteCategory = async (cat: string) => {
+    setCategories((prev) => prev.filter((c) => c !== cat));
+    const affected = typedMembers.filter((m) => m.member_category?.trim() === cat);
+    for (const m of affected) {
+      await updateMemberCategory?.(m.profile_id, null);
+    }
+    showToast("Category deleted");
+  };
 
   const filteredReferences = useMemo(() => {
     return typedReferences
@@ -337,6 +374,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         setTargetMemberId(memberId);
         setIsCategoryModalOpen(true);
         setCustomCategoryInput("");
+        setCategoryMenuMemberId(null);
         return;
       }
 
@@ -567,13 +605,90 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         </main>
 
         <aside className="hidden lg:block sticky top-24 h-fit">
-          <div className="bg-white rounded-4xl border border-stone-100 p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-4xl border border-stone-100 p-5 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400">Member Categories</h3>
               <span className="text-xs text-stone-400">{typedMembers.length}</span>
             </div>
 
-            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Owner: Manage Categories Button */}
+            {permissions.canManageMembers && (
+              <button
+                onClick={() => setShowCategoryManager((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-2xl border border-stone-200 text-stone-700 text-xs font-semibold hover:bg-stone-50 transition-colors"
+              >
+                <span className="flex items-center gap-2"><Settings2 className="w-3.5 h-3.5" /> Manage Categories</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showCategoryManager ? "rotate-180" : ""}`} />
+              </button>
+            )}
+
+            {/* Category Manager Panel */}
+            {showCategoryManager && permissions.canManageMembers && (
+              <div className="bg-stone-50 rounded-2xl border border-stone-100 p-3 space-y-2">
+                {categories.length === 0 && (
+                  <p className="text-xs text-stone-400 text-center py-2">No categories yet</p>
+                )}
+                {categories.map((cat) => (
+                  <div key={cat} className="flex items-center gap-2 group">
+                    {editingCategory === cat ? (
+                      <>
+                        <input
+                          autoFocus
+                          value={editCategoryValue}
+                          onChange={(e) => setEditCategoryValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameCategory(cat, editCategoryValue);
+                            if (e.key === "Escape") setEditingCategory(null);
+                          }}
+                          onBlur={() => handleRenameCategory(cat, editCategoryValue)}
+                          className="flex-1 text-xs px-2 py-1.5 rounded-xl border border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400/40 bg-white"
+                        />
+                        <button onClick={() => handleRenameCategory(cat, editCategoryValue)} className="p-1 text-lime-600 hover:text-lime-700">
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-xs font-medium text-stone-700 truncate">{cat}</span>
+                        <button
+                          onClick={() => { setEditingCategory(cat); setEditCategoryValue(cat); }}
+                          className="p-1 text-stone-300 hover:text-stone-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(cat)}
+                          className="p-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {/* Add new category */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }}
+                    placeholder="New category name..."
+                    className="flex-1 text-xs px-2.5 py-1.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-lime-400/40 bg-white"
+                  />
+                  <button
+                    onClick={handleAddCategory}
+                    disabled={!newCategoryInput.trim() || categories.includes(newCategoryInput.trim())}
+                    className="p-1.5 rounded-xl bg-stone-900 text-white hover:bg-black transition-colors disabled:opacity-40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Member list grouped by category */}
+            <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
               {memberCategoryGroups.map(([category, categoryMembers]) => (
                 <div key={category} className="border border-stone-100 rounded-2xl p-3">
                   <p className="text-sm font-semibold text-stone-800 mb-2">{category}</p>
@@ -608,28 +723,32 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
                                 Category <ChevronDown className="w-3 h-3" />
                               </button>
                               {categoryMenuMemberId === member.profile_id && (
-                                <div className="absolute right-0 mt-2 w-40 bg-white border border-stone-200 rounded-xl shadow-lg z-20 py-1">
+                                <div className="absolute right-0 mt-2 w-44 bg-white border border-stone-200 rounded-xl shadow-lg z-20 py-1">
                                   <button
                                     onClick={() => handleMemberCategoryChange(member.profile_id, "Unassigned")}
                                     className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-stone-50"
                                   >
                                     Unassigned
                                   </button>
-                                  {customCategoryOptions.map((option) => (
+                                  {categories.map((option) => (
                                     <button
                                       key={option}
                                       onClick={() => handleMemberCategoryChange(member.profile_id, option)}
-                                      className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-stone-50"
+                                      className={`w-full text-left px-3 py-2 text-xs hover:bg-stone-50 ${
+                                        member.member_category === option ? "text-lime-700 font-semibold" : "text-stone-700"
+                                      }`}
                                     >
                                       {option}
                                     </button>
                                   ))}
-                                  <button
-                                    onClick={() => handleMemberCategoryChange(member.profile_id, "__custom__")}
-                                    className="w-full text-left px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-50"
-                                  >
-                                    + Custom
-                                  </button>
+                                  <div className="border-t border-stone-100 mt-1 pt-1">
+                                    <button
+                                      onClick={() => handleMemberCategoryChange(member.profile_id, "__custom__")}
+                                      className="w-full text-left px-3 py-2 text-xs font-semibold text-stone-500 hover:bg-stone-50"
+                                    >
+                                      + New Category
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -787,11 +906,12 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
               onChange={(e) => setCustomCategoryInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && customCategoryInput.trim()) {
+                  const val = customCategoryInput.trim();
                   if (targetMemberId) {
-                    updateMemberCategory?.(targetMemberId, customCategoryInput.trim());
+                    if (!categories.includes(val)) setCategories((prev) => [...prev, val].sort((a, b) => a.localeCompare(b)));
+                    updateMemberCategory?.(targetMemberId, val);
                     showToast("Category updated");
                     setIsCategoryModalOpen(false);
-                    setCategoryMenuMemberId(null);
                   }
                 }
               }}
@@ -807,13 +927,12 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
               </button>
               <button
                 onClick={async () => {
-                  if (!customCategoryInput.trim()) return;
-                  if (targetMemberId) {
-                    await updateMemberCategory?.(targetMemberId, customCategoryInput.trim());
-                    showToast("Category updated");
-                    setIsCategoryModalOpen(false);
-                    setCategoryMenuMemberId(null);
-                  }
+                  const val = customCategoryInput.trim();
+                  if (!val || !targetMemberId) return;
+                  if (!categories.includes(val)) setCategories((prev) => [...prev, val].sort((a, b) => a.localeCompare(b)));
+                  await updateMemberCategory?.(targetMemberId, val);
+                  showToast("Category updated");
+                  setIsCategoryModalOpen(false);
                 }}
                 disabled={!customCategoryInput.trim()}
                 className="flex-2 px-6 py-3.5 rounded-2xl bg-stone-900 text-white font-bold text-sm hover:bg-black transition-colors disabled:opacity-50"

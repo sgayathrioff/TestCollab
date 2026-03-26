@@ -69,7 +69,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FolderFilter>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [groupBy, setGroupBy] = useState<"type" | "folder" | "none">("type");
+  const [groupBy, setGroupBy] = useState<"type" | "folder" | "tag" | "none">("type");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "alphabetical" | "reverse-alphabetical">("newest");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -210,6 +210,25 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
       return Object.entries(groups).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     }
 
+    if (groupBy === "tag") {
+      const groups = filteredReferences.reduce((acc, ref) => {
+        const refTags = ref.tags || [];
+        if (refTags.length === 0) {
+          const key = "No Tags";
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(ref);
+        } else {
+          refTags.forEach((tag) => {
+            const key = tag.tag_name;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(ref);
+          });
+        }
+        return acc;
+      }, {} as Record<string, ReferenceData[]>);
+      return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
     const groups = filteredReferences.reduce((acc, ref) => {
       const key = ref.folder_id || "uncategorized";
       if (!acc[key]) acc[key] = [];
@@ -221,6 +240,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
   }, [filteredReferences, groupBy]);
 
   const resolveGroupLabel = (groupKey: string) => {
+    if (groupBy === "tag") return groupKey;
     if (groupBy === "type") return groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
     if (groupKey === "uncategorized") return "Uncategorized";
     return typedFolders.find((f) => f.folder_id === groupKey)?.folder_name || "Collection";
@@ -398,41 +418,45 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         />
 
         <main>
-          <div className="bg-white rounded-4xl border border-stone-100 p-5 mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <div className="relative flex-1 max-w-xl">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search references"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400/60"
-                />
-              </div>
+          {/* Top Search Bar */}
+          <div className="mb-6">
+            <div className="relative w-full group">
+              <Search className="w-5 h-5 text-stone-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-lime-500 transition-colors" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search your collection..."
+                className="w-full pl-12 pr-4 py-4 rounded-[30px] border border-stone-200 bg-white text-base focus:outline-none focus:ring-4 focus:ring-lime-400/20 focus:border-lime-400 transition-all shadow-sm"
+              />
             </div>
+          </div>
 
-            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "grid" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border ${viewMode === "list" ? "bg-stone-900 text-white border-stone-900" : "border-stone-200 text-stone-600"}`}
-              >
-                <List className="w-4 h-4" />
-              </button>
+          <div className="bg-white rounded-4xl border border-stone-100 p-5 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pr-4 border-r border-stone-100 mr-2">
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`p-2.5 rounded-xl transition-all ${viewMode === "grid" ? "bg-stone-900 text-white shadow-lg shadow-stone-900/20" : "text-stone-400 hover:text-stone-900 hover:bg-stone-50"}`}
+                >
+                  <LayoutGrid className="w-4.5 h-4.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`p-2.5 rounded-xl transition-all ${viewMode === "list" ? "bg-stone-900 text-white shadow-lg shadow-stone-900/20" : "text-stone-400 hover:text-stone-900 hover:bg-stone-50"}`}
+                >
+                  <List className="w-4.5 h-4.5" />
+                </button>
+              </div>
 
               <div className="relative">
                 <select
                   value={groupBy}
                   onChange={(e) => setGroupBy(e.target.value as any)}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 bg-stone-50 font-medium hover:bg-stone-100 transition-colors outline-none"
                 >
                   <option value="type">Group: Type</option>
                   <option value="folder">Group: Folder</option>
+                  <option value="tag">Group: Tag</option>
                   <option value="none">Group: None</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -442,7 +466,7 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700"
+                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 bg-stone-50 font-medium hover:bg-stone-100 transition-colors outline-none"
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
@@ -451,38 +475,23 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
                 </select>
                 <ArrowDownUp className="w-4 h-4 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
+            </div>
 
-              {permissions.canEdit && (
-                <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-[#1c1917] text-white font-bold text-sm flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" /> Add
-                </button>
-              )}
-
-              <button
-                onClick={() => setIsChatOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
-                title="Open chat"
-              >
-                <MessageCircle className="w-4 h-4" />
-              </button>
-
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsMembersModalOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
+                className="p-2.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-900 hover:text-white transition-all"
                 title="Manage members"
               >
-                <Users className="w-4 h-4" />
+                <Users className="w-4.5 h-4.5" />
               </button>
 
               <button
                 onClick={() => setIsActivityLogOpen(true)}
-                className="px-3 py-2 rounded-xl border border-stone-200 text-stone-700"
+                className="p-2.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-900 hover:text-white transition-all"
                 title="Activity log"
               >
-                <Activity className="w-4 h-4" />
+                <Activity className="w-4.5 h-4.5" />
               </button>
             </div>
           </div>
@@ -870,16 +879,28 @@ export default function WorkspaceClient({ workspaceId }: WorkspaceClientProps) {
         </div>
       )}
 
-      <button
-        onClick={() => setIsChatOpen(true)}
-        className="fixed bottom-8 left-8 z-50 w-16 h-16 rounded-full bg-stone-900 text-lime-400 shadow-2xl hover:bg-black hover:scale-105 transition-all flex items-center justify-center border-4 border-white group float-in delay-3"
-        title="Open workspace chat"
-      >
-        <div className="relative">
-          <MessageCircle className="w-7 h-7" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-lime-500 rounded-full border-2 border-stone-900 animate-pulse"></span>
-        </div>
-      </button>
+      <div className="fixed bottom-8 left-8 z-50 flex items-center gap-3">
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="w-16 h-16 rounded-full bg-stone-900 text-lime-400 shadow-2xl hover:bg-black hover:scale-105 transition-all flex items-center justify-center border-4 border-white group float-in delay-3"
+          title="Open workspace chat"
+        >
+          <div className="relative">
+            <MessageCircle className="w-7 h-7" />
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-lime-500 rounded-full border-2 border-stone-900 animate-pulse"></span>
+          </div>
+        </button>
+
+        {permissions.canEdit && (
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="w-16 h-16 rounded-full bg-lime-500 text-stone-900 shadow-2xl hover:bg-lime-600 hover:scale-105 transition-all flex items-center justify-center border-4 border-white group float-in delay-4"
+            title="Add reference"
+          >
+            <Plus className="w-7 h-7 font-bold" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

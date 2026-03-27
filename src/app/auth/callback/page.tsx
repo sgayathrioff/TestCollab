@@ -9,8 +9,6 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const handleAuthCallback = async () => {
-      console.log("Full URL:", window.location.href);
-
       // Get the code from URL query params (Supabase uses PKCE flow)
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get("code");
@@ -36,7 +34,6 @@ export default function AuthCallback() {
           }
 
           if (data?.user) {
-            console.log("User authenticated successfully:", data.user.id);
             router.push(`/dashboard/${data.user.id}`);
           } else {
             console.error("No user found after exchanging code.");

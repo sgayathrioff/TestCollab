@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { CreateWorkspaceModal } from "@/components/dashboard/CreateWorkspaceModal";
 import { Plus, Bell, ArrowUpRight, Users, FolderPlus, Activity, Zap, Inbox } from "lucide-react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 export default function DashboardClient({
   initialWorkspaces,
@@ -28,8 +29,59 @@ export default function DashboardClient({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>(initialWorkspaces || []);
   const [pendingInvites] = useState<any[]>(initialPendingInvites || []);
+  const [clientFetchError, setClientFetchError] = useState<string | null>(null);
+  const [isRefreshingWorkspaces, setIsRefreshingWorkspaces] = useState(false);
 
   const date = new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+
+  useEffect(() => {
+    if (authLoading || !user?.id) return;
+    if (workspaces.length > 0) return;
+
+    const fetchDashboardWorkspacesClientSide = async () => {
+      setIsRefreshingWorkspaces(true);
+      setClientFetchError(null);
+
+      try {
+        const { data: owned, error: ownedError } = await supabase
+          .from("workspaces")
+          .select("*")
+          .eq("workspace_owner_id", user.id)
+          .or("is_archived.is.null,is_archived.eq.false")
+          .order("workspace_created_at", { ascending: false });
+
+        if (ownedError) throw ownedError;
+
+        const { data: sharedRows, error: sharedError } = await supabase
+          .from("workspace_members")
+          .select("workspace_id, workspaces(*)")
+          .eq("profile_id", user.id)
+          .limit(200);
+
+        if (sharedError) throw sharedError;
+
+        const sharedWorkspaces = (sharedRows || [])
+          .map((row: any) => {
+            if (Array.isArray(row.workspaces)) return row.workspaces[0] || null;
+            return row.workspaces || null;
+          })
+          .filter((workspace: any) => workspace && !workspace.is_archived);
+
+        const all = [...(owned || []), ...sharedWorkspaces];
+        const unique = Array.from(new Map(all.map((workspace: any) => [workspace.workspace_id, workspace])).values());
+
+        setWorkspaces(unique);
+      } catch (error: any) {
+        const message = error?.message || "Failed to fetch workspaces";
+        console.error("Client dashboard workspace fetch failed:", error);
+        setClientFetchError(message);
+      } finally {
+        setIsRefreshingWorkspaces(false);
+      }
+    };
+
+    fetchDashboardWorkspacesClientSide();
+  }, [authLoading, user?.id, workspaces.length]);
 
   if (!authLoading && user && user.id !== userId) {
     router.push("/");
@@ -95,7 +147,7 @@ export default function DashboardClient({
                   <p className="text-sm font-medium text-stone-800 truncate leading-5">{log.activity_target_title || "Workspace update"}</p>
                   <div className="flex items-center justify-between mt-1.5 gap-2">
                     <p className="text-[11px] text-stone-500 uppercase tracking-wide truncate">{(log.activity_type || "activity").replace(/_/g, " ")}</p>
-                    <p className="text-[11px] text-stone-400 whitespace-nowrap">{log.created_at ? new Date(log.created_at).toLocaleDateString() : ""}</p>
+                    <p className="text-[11px] text-stone-400 whitespace-nowrap">{log.activity_created_at ? new Date(log.activity_created_at).toLocaleDateString() : ""}</p>
                   </div>
                 </div>
               ))}
@@ -209,7 +261,13 @@ export default function DashboardClient({
             <FolderPlus className="w-10 h-10" />
           </div>
           <h3 className="text-2xl font-medium text-stone-900 mb-2">No workspaces yet</h3>
-          <p className="text-stone-500 mb-8 max-w-md mx-auto">Create your first workspace to start organizing your references in a flow state.</p>
+          <p className="text-stone-500 mb-8 max-w-md mx-auto">
+            {isRefreshingWorkspaces
+              ? "Loading your workspaces..."
+              : clientFetchError
+                ? `Could not load workspaces: ${clientFetchError}`
+                : "Create your first workspace to start organizing your references in a flow state."}
+          </p>
           <button
             onClick={() => setIsModalOpen(true)}
             className="px-8 py-3 rounded-full border-2 border-stone-900 text-stone-900 font-bold hover:bg-stone-900 hover:text-white transition-all duration-300"

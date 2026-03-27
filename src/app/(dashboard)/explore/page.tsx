@@ -13,12 +13,14 @@ export default async function ExplorePage() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options: any }[]) {
           cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
         },
       },
     }
   );
+
+  const { data: { user } } = await supabase.auth.getUser();
 
   const [{ data: publicWorkspaces }, { data: profiles }] = await Promise.all([
     supabase
@@ -33,5 +35,43 @@ export default async function ExplorePage() {
       .limit(10),
   ]);
 
-  return <ExploreClient initialWorkspaces={publicWorkspaces || []} initialProfiles={profiles || []} />;
-}
+  if (!profiles || profiles.length === 0) {
+    return <ExploreClient initialWorkspaces={publicWorkspaces || []} initialProfiles={[]} />;
+  }
+
+  const profileIds = profiles.map(p => p.profile_id);
+
+  // Fetch counts and follow status in bulk
+  const [
+    { data: followersData },
+    { data: workspacesData },
+    { data: userFollowingsData }
+  ] = await Promise.all([
+    supabase.from("followers").select("following_id").in("following_id", profileIds),
+    supabase.from("workspaces").select("workspace_owner_id").in("workspace_owner_id", profileIds),
+    user ? supabase.from("followers").select("following_id").eq("follower_id", user.id).in("following_id", profileIds) : Promise.resolve({ data: [] })
+  ]);
+
+  // Map counts
+  const followerCounts = (followersData || []).reduce((acc: any, curr: any) => {
+    acc[curr.following_id] = (acc[curr.following_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  const workspaceCounts = (workspacesData || []).reduce((acc: any, curr: any) => {
+    acc[curr.workspace_owner_id] = (acc[curr.workspace_owner_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  const userFollowingSet = new Set((userFollowingsData || []).map((f: any) => f.following_id));
+
+  // Transform profiles
+  const transformedProfiles = profiles.map(p => ({
+    ...p,
+    followers_count: followerCounts[p.profile_id] || 0,
+    workspaces_count: workspaceCounts[p.profile_id] || 0,
+    is_following: userFollowingSet.has(p.profile_id)
+  }));
+
+  return <ExploreClient initialWorkspaces={publicWorkspaces || []} initialProfiles={transformedProfiles} />;
+}

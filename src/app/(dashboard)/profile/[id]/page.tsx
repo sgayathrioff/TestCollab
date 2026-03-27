@@ -130,8 +130,8 @@ export default function ProfilePage({
   const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Use useFollow hook directly - will automatically check status on mount
-  const { isFollowing, toggleFollow, isLoading } = useFollow(profileId || "");
+  // Use useFollow hook directly - will automatically check status and fetch count on mount
+  const { isFollowing, toggleFollow, isLoading, followersCount: syncedFollowersCount } = useFollow(profileId || "");
   const [activeTab, setActiveTab] = useState<"workspaces" | "saved">("workspaces");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -240,13 +240,7 @@ export default function ProfilePage({
 
   const handleFollowToggle = async () => {
     await toggleFollow();
-    // Optimistically update follow count
-    setStats(prev => ({
-      ...prev,
-      followersCount: isFollowing
-        ? Math.max(0, prev.followersCount - 1)
-        : prev.followersCount + 1
-    }));
+    // Count is now managed by useFollow hook
   };
 
   const handleRemoveBanner = async () => {
@@ -526,7 +520,7 @@ export default function ProfilePage({
               <div className="w-px h-10 bg-stone-200"></div>
               <div className="text-center">
                 <h4 className="text-2xl font-bold text-stone-900">
-                  {formatNumber(stats.followersCount)}
+                  {formatNumber(syncedFollowersCount || stats.followersCount)}
                 </h4>
                 <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   Followers

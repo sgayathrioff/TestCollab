@@ -34,6 +34,7 @@ interface CreatorResult {
   profile_avatar_url: string;
   workspaces_count: number;
   followers_count: number;
+  is_following: boolean;
 }
 
 const placeholderImages = [
@@ -89,9 +90,9 @@ export default function ExploreClient({
       username: profile.display_name?.toLowerCase().replace(/\s+/g, '') || profile.profile_id.slice(0, 8),
       role: "Creator",
       avatar: profile.profile_avatar_url || defaultAvatar,
-      spacesCount: 0,
-      followersCount: 0,
-      isFollowing: false,
+      spacesCount: profile.workspaces_count || 0,
+      followersCount: profile.followers_count || 0,
+      isFollowing: profile.is_following || false,
     }))
   );
 
@@ -216,14 +217,40 @@ export default function ExploreClient({
 
       if (creatorError) throw creatorError;
 
+      const profileIds = creators?.map(c => c.profile_id) || [];
+      
+      // Fetch counts and follow status for searched creators in bulk
+      const [
+        { data: followersData },
+        { data: workspacesData },
+        { data: userFollowingsData }
+      ] = await Promise.all([
+        supabase.from("followers").select("following_id").in("following_id", profileIds),
+        supabase.from("workspaces").select("workspace_owner_id").in("workspace_owner_id", profileIds),
+        user ? supabase.from("followers").select("following_id").eq("follower_id", user.id).in("following_id", profileIds) : Promise.resolve({ data: [] })
+      ]);
+
+      const followerCountsMap = (followersData || []).reduce((acc: any, curr: any) => {
+        acc[curr.following_id] = (acc[curr.following_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      const workspaceCountsMap = (workspacesData || []).reduce((acc: any, curr: any) => {
+        acc[curr.workspace_owner_id] = (acc[curr.workspace_owner_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      const userFollowingSet = new Set((userFollowingsData || []).map((f: any) => f.following_id));
+
       setSearchResults({
         workspaces: workspacesWithProfiles as WorkspaceResult[],
         creators: creators?.map((c: any) => ({
           profile_id: c.profile_id,
           display_name: c.display_name,
           profile_avatar_url: c.profile_avatar_url,
-          workspaces_count: 0,
-          followers_count: 0,
+          workspaces_count: workspaceCountsMap[c.profile_id] || 0,
+          followers_count: followerCountsMap[c.profile_id] || 0,
+          is_following: userFollowingSet.has(c.profile_id)
         })) || [],
       });
     } catch {
@@ -280,12 +307,12 @@ export default function ExploreClient({
                         author={
                           profile
                             ? {
-                                id: profile.profile_id,
-                                name: profile.display_name,
-                                avatar:
-                                  profile.profile_avatar_url ||
-                                  "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
-                              }
+                              id: profile.profile_id,
+                              name: profile.display_name,
+                              avatar:
+                                profile.profile_avatar_url ||
+                                "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=100",
+                            }
                             : undefined
                         }
                         onAuthorClick={() =>
@@ -318,6 +345,7 @@ export default function ExploreClient({
                     }
                     spacesCount={creator.workspaces_count}
                     followersCount={creator.followers_count}
+                    isFollowing={creator.is_following}
                   />
                 ))}
               </div>

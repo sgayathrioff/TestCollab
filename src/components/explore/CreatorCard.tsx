@@ -23,12 +23,12 @@ export function CreatorCard({
   role,
   avatar,
   spacesCount,
-  followersCount,
-  isFollowing: initialFollowing = false,
+  followersCount: initialFollowersCount,
+  isFollowing: initialIsFollowing = false,
 }: CreatorCardProps) {
   const router = useRouter();
   const { user } = useAuth();
-  const { isFollowing, toggleFollow, isLoading } = useFollow(id, initialFollowing);
+  const { isFollowing, toggleFollow, isLoading, followersCount } = useFollow(id, initialIsFollowing, initialFollowersCount);
 
   const formattedFollowers =
     followersCount >= 1000
@@ -39,6 +39,7 @@ export function CreatorCard({
     e.stopPropagation();
     await toggleFollow();
   };
+
 
   const handleProfileClick = () => {
     router.push(`/profile/${id}`);
@@ -81,14 +82,13 @@ export function CreatorCard({
 
       {/* Follow Button */}
       {user?.id !== id && (
-         <button
+        <button
           onClick={handleFollowToggle}
           disabled={isLoading}
-          className={`w-full py-3 rounded-2xl font-bold transition-colors ${
-            isFollowing
+          className={`w-full py-3 rounded-2xl font-bold transition-colors ${isFollowing
               ? "bg-[#1c1917] text-white hover:bg-stone-800 shadow-md"
               : "bg-stone-100 text-stone-900 hover:bg-lime-200"
-          }`}
+            }`}
         >
           {isLoading ? "Updating..." : isFollowing ? "Following" : "Follow"}
         </button>
